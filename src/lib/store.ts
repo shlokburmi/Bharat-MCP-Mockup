@@ -383,9 +383,19 @@ export function assignRider(id: string, riderId?: string): Order {
   const order = getOrder(id);
   if (!order) throw new StoreError("Order not found", 404);
   const riders = listRiders();
+  // Riders already carrying a live order are picked last, so a demo with
+  // several orders in flight spreads them across the partner fleet.
+  const busy = new Set(
+    listOrders()
+      .filter((o) => o.riderId && !isTerminal(o.status) && o.status !== "created")
+      .map((o) => o.riderId as string),
+  );
+  const free = riders.filter((r) => r.online && !busy.has(r.id));
   const rider = riderId
     ? riders.find((r) => r.id === riderId)
-    : riders.find((r) => r.online && r.zone.includes(order.customer.area)) ??
+    : free.find((r) => r.zone.includes(order.customer.area)) ??
+      free[0] ??
+      riders.find((r) => r.online && r.zone.includes(order.customer.area)) ??
       riders.find((r) => r.online);
   if (!rider) throw new StoreError("No rider available", 409);
   return save({

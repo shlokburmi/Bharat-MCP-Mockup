@@ -243,3 +243,8 @@ export async function runTestOrder(
   );
   return data.order;
 }
+
+/** Phase 5 demo seeding — plants one order at each stage of the journey. */
+export async function seedScenario(): Promise<{ created: string[]; total: number }> {
+  return json(await fetch("/api/demo/seed-scenario", { method: "POST" }));
+}

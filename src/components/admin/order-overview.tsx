@@ -27,13 +27,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { resetDemo } from "@/lib/api";
+import { resetDemo, seedScenario } from "@/lib/api";
 import { rupees, timeOfDay } from "@/lib/format";
 import { OPERATOR_STATUS_COPY } from "@/lib/state-machine";
 import { STATUS_PILL } from "@/lib/operator-actions";
 import { useLiveOrders } from "@/lib/use-live-order";
 import { OrderStatus } from "@/lib/types";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Sparkles } from "lucide-react";
 
 const FILTERS: { value: string; label: string }[] = [
   { value: "all", label: "All orders" },
@@ -61,6 +61,7 @@ export function OrderOverview() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const selected = orders.find((o) => o.id === selectedId) ?? null;
 
@@ -94,6 +95,17 @@ export function OrderOverview() {
     }
   }
 
+  /** Plants one order at each stage so every screen opens with something on it. */
+  async function handleSeed() {
+    setSeeding(true);
+    try {
+      await seedScenario();
+      await refresh();
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -116,6 +128,10 @@ export function OrderOverview() {
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={handleSeed} disabled={seeding}>
+            <Sparkles className="size-4" />
+            Seed scenario
+          </Button>
           <Button variant="outline" onClick={handleReset} disabled={resetting}>
             <RotateCcw className="size-4" />
             Reset demo
@@ -181,7 +197,7 @@ export function OrderOverview() {
       {!loading && filtered.length === 0 && (
         <p className="py-10 text-center text-sm text-muted-foreground">
           {orders.length === 0
-            ? "No orders yet. Place one from the assistant chat or the Test Order tab."
+            ? "No orders yet. Hit Seed scenario, or place one from the assistant chat."
             : "No orders match this filter."}
         </p>
       )}
