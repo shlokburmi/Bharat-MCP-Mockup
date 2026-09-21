@@ -1,23 +1,22 @@
 "use client";
 
-import { Order, Restaurant, STATUS_COLORS, STATUS_LABELS } from "@/types";
+import { Order, OrderStatus } from "@/lib/types";
+import { OPERATOR_STATUS_COPY } from "@/lib/state-machine";
+import { partnerStatusNote, restaurantActions, STATUS_PILL } from "@/lib/operator-actions";
+import { rupees } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 interface OrderCardProps {
   order: Order;
-  restaurant: Restaurant;
-  onStatusUpdate: (orderId: string, newStatus: Order["status"], extra?: Partial<Order>) => void;
+  onStatusUpdate: (orderId: string, newStatus: OrderStatus) => void;
   onReject: (orderId: string) => void;
   onViewDetail: (order: Order) => void;
 }
 
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const mins = Math.floor(diffMs / 60000);
+function timeAgo(dateStr: string, now: number): string {
+  const mins = Math.floor((now - new Date(dateStr).getTime()) / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins} min ago`;
   const hours = Math.floor(mins / 60);
@@ -25,124 +24,15 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function OrderCard({
-  order,
-  restaurant,
-  onStatusUpdate,
-  onReject,
-  onViewDetail,
-}: OrderCardProps) {
-  const statusColors = STATUS_COLORS[order.status];
-  const statusLabel = STATUS_LABELS[order.status];
-  const shortId = order.id.slice(-3).toUpperCase();
+const TONE_CLASS = {
+  good: "bg-good text-white hover:bg-good/90",
+  primary: "bg-brand text-white hover:bg-brand-dark",
+  danger: "",
+} as const;
 
-  const renderActions = () => {
-    switch (order.status) {
-      case "sent_to_restaurant":
-        return (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="flex-1 bg-green-600 text-white hover:bg-green-700"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStatusUpdate(order.id, "accepted");
-              }}
-            >
-              Accept
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="flex-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                onReject(order.id);
-              }}
-            >
-              Reject
-            </Button>
-          </div>
-        );
-      case "accepted":
-        return (
-          <Button
-            size="sm"
-            className="w-full bg-orange-500 text-white hover:bg-orange-600"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStatusUpdate(order.id, "preparing");
-            }}
-          >
-            Start Preparing
-          </Button>
-        );
-      case "preparing":
-        return (
-          <Button
-            size="sm"
-            className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStatusUpdate(order.id, "ready");
-            }}
-          >
-            Mark Ready
-          </Button>
-        );
-      case "ready":
-        if (restaurant.category === "A") {
-          if (order.orderType === "pickup") {
-            return (
-              <Button
-                size="sm"
-                className="w-full bg-cyan-600 text-white hover:bg-cyan-700"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStatusUpdate(order.id, "picked_up");
-                }}
-              >
-                Mark as Picked Up by Customer
-              </Button>
-            );
-          }
-          return (
-            <Button
-              size="sm"
-              className="w-full bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStatusUpdate(order.id, "out_for_delivery");
-              }}
-            >
-              Out for Delivery
-            </Button>
-          );
-        }
-        // Category B: read-only rider info
-        return (
-          <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-            {order.riderName
-              ? `Rider: ${order.riderName} - Awaiting pickup`
-              : "Waiting for delivery partner assignment"}
-          </div>
-        );
-      case "picked_up":
-      case "out_for_delivery":
-        if (restaurant.category === "B") {
-          return (
-            <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              {order.riderName
-                ? `Rider: ${order.riderName} - ${STATUS_LABELS[order.status]}`
-                : "Delivery partner en route"}
-            </div>
-          );
-        }
-        return null;
-      default:
-        return null;
-    }
-  };
+export function OrderCard({ order, onStatusUpdate, onReject, onViewDetail }: OrderCardProps) {
+  const actions = restaurantActions(order);
+  const partnerNote = partnerStatusNote(order);
 
   return (
     <Card
@@ -150,55 +40,74 @@ export function OrderCard({
       onClick={() => onViewDetail(order)}
     >
       <CardContent className="space-y-3">
-        {/* Header row */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-base font-semibold">#{shortId}</span>
+            <span className="text-base font-semibold">{order.code}</span>
             <Badge variant="secondary" className="text-[10px]">
-              {order.orderType === "delivery" ? "Delivery" : "Pickup"}
+              {order.mode === "delivery" ? "Delivery" : "Pickup"}
             </Badge>
-            <Badge variant="outline" className="text-[10px]">
-              {order.paymentMethod.toUpperCase()}
-            </Badge>
+            {order.paymentMethod && (
+              <Badge variant="outline" className="text-[10px]">
+                {order.paymentMethod.toUpperCase()}
+              </Badge>
+            )}
           </div>
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColors}`}>
-            {statusLabel}
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_PILL[order.status]}`}
+          >
+            {OPERATOR_STATUS_COPY[order.status]}
           </span>
         </div>
 
-        {/* Customer and time */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-foreground">
-            {order.customerName}
-          </span>
+          <span className="text-sm font-medium text-foreground">{order.customer.name}</span>
           <span className="text-xs text-muted-foreground">
-            {timeAgo(order.createdAt)}
+            {timeAgo(order.createdAt, Date.parse(order.updatedAt))}
           </span>
         </div>
 
-        {/* Items */}
         <div className="space-y-0.5">
-          {order.items.map((item, i) => (
+          {order.items.map((item) => (
             <div
-              key={i}
+              key={item.menuItemId}
               className="flex justify-between text-xs text-muted-foreground"
             >
               <span>
-                {item.quantity}x {item.name}
+                {item.qty}x {item.name}
               </span>
-              <span>Rs.{item.price * item.quantity}</span>
+              <span className="tabular-nums">{rupees(item.price * item.qty)}</span>
             </div>
           ))}
         </div>
 
-        {/* Total */}
         <div className="flex items-center justify-between border-t pt-2">
           <span className="text-sm font-semibold">Total</span>
-          <span className="text-sm font-semibold">Rs.{order.totalAmount}</span>
+          <span className="text-sm font-semibold tabular-nums">{rupees(order.totals.total)}</span>
         </div>
 
-        {/* Actions */}
-        {renderActions()}
+        {actions.length > 0 && (
+          <div className="flex gap-2">
+            {actions.map((action) => (
+              <Button
+                key={action.status}
+                size="sm"
+                variant={action.tone === "danger" ? "destructive" : "default"}
+                className={`flex-1 ${TONE_CLASS[action.tone]}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (action.needsReason) onReject(order.id);
+                  else onStatusUpdate(order.id, action.status);
+                }}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {partnerNote && (
+          <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">{partnerNote}</div>
+        )}
       </CardContent>
     </Card>
   );

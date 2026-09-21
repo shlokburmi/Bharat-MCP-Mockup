@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useStore } from "@/data/use-store";
-import { Order, Restaurant, OrderStatus } from "@/types";
+import { useMemo, useState } from "react";
+import { transitionOrder } from "@/lib/api";
+import { useLiveOrders } from "@/lib/use-live-order";
+import { Order, OrderStatus, Restaurant } from "@/lib/types";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,34 +27,34 @@ interface OrderInboxProps {
 type TabKey = "new" | "active" | "completed" | "rejected";
 
 const TAB_STATUS_MAP: Record<TabKey, OrderStatus[]> = {
-  new: ["sent_to_restaurant"],
+  new: ["paid", "sent_to_restaurant"],
   active: ["accepted", "preparing", "ready", "picked_up", "out_for_delivery"],
-  completed: ["delivered"],
-  rejected: ["rejected"],
+  completed: ["delivered", "collected"],
+  rejected: ["rejected", "cancelled"],
 };
 
+/** Orders that never reached the restaurant are none of its business. */
+const HIDDEN: OrderStatus[] = ["created", "payment_failed", "expired"];
+
 export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
-  const store = useStore();
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  // Polls the shared server store, so an order paid in the customer tab shows
+  // up here without a refresh.
+  const { orders, loading, error, refresh } = useLiveOrders({ restaurantId: restaurant.id });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const orders = useMemo(
-    () => store.getOrdersByRestaurant(restaurant.id),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [store, restaurant.id, store.getOrders().length]
-  );
+  // Kept as an id so the open sheet follows live updates rather than freezing
+  // on the snapshot it was opened with.
+  const selectedOrder = orders.find((o) => o.id === selectedId) ?? null;
 
   const ordersByTab = useMemo(() => {
-    const result: Record<TabKey, Order[]> = {
-      new: [],
-      active: [],
-      completed: [],
-      rejected: [],
-    };
+    const result: Record<TabKey, Order[]> = { new: [], active: [], completed: [], rejected: [] };
     for (const order of orders) {
+      if (HIDDEN.includes(order.status)) continue;
       for (const tab of Object.keys(TAB_STATUS_MAP) as TabKey[]) {
         if (TAB_STATUS_MAP[tab].includes(order.status)) {
           result[tab].push(order);
@@ -61,25 +62,21 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
         }
       }
     }
-    // Sort newest first
-    for (const tab of Object.keys(result) as TabKey[]) {
-      result[tab].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    }
     return result;
   }, [orders]);
 
-  const handleStatusUpdate = (
-    orderId: string,
-    newStatus: OrderStatus,
-    extra?: Partial<Order>
-  ) => {
-    store.updateOrderStatus(orderId, newStatus, extra);
-    // Refresh selected order if it is the one being updated
-    if (selectedOrder?.id === orderId) {
-      const updated = store.getOrder(orderId);
-      if (updated) setSelectedOrder(updated);
+  const handleStatusUpdate = async (orderId: string, newStatus: OrderStatus) => {
+    setActionError(null);
+    try {
+      await transitionOrder(orderId, {
+        status: newStatus,
+        actor: "restaurant",
+        // The restaurant promises a time when it accepts.
+        etaMins: newStatus === "accepted" ? restaurant.prepTimeMins + 15 : undefined,
+      });
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update the order");
     }
   };
 
@@ -89,50 +86,43 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
     setRejectDialogOpen(true);
   };
 
-  const handleRejectConfirm = () => {
+  const handleRejectConfirm = async () => {
     if (!rejectingOrderId) return;
-    store.updateOrderStatus(rejectingOrderId, "rejected", {
-      rejectionReason: rejectionReason || "No reason provided",
-    });
-    setRejectDialogOpen(false);
-    setRejectingOrderId(null);
-    setRejectionReason("");
-    if (selectedOrder?.id === rejectingOrderId) {
-      const updated = store.getOrder(rejectingOrderId);
-      if (updated) setSelectedOrder(updated);
+    setActionError(null);
+    try {
+      await transitionOrder(rejectingOrderId, {
+        status: "rejected",
+        actor: "restaurant",
+        rejectionReason: rejectionReason.trim() || "No reason given",
+      });
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not reject the order");
+    } finally {
+      setRejectDialogOpen(false);
+      setRejectingOrderId(null);
+      setRejectionReason("");
     }
-  };
-
-  const handleViewDetail = (order: Order) => {
-    setSelectedOrder(order);
-    setDetailOpen(true);
   };
 
   const renderEmptyState = (tab: TabKey) => {
     const messages: Record<TabKey, { title: string; desc: string }> = {
       new: {
-        title: "No new orders",
-        desc: "New orders will appear here when customers place them",
+        title: loading ? "Loading orders…" : "No new orders",
+        desc: loading
+          ? "Checking the kitchen queue"
+          : "New orders appear here the moment a customer pays",
       },
-      active: {
-        title: "No active orders",
-        desc: "Orders you accept will show up here",
-      },
-      completed: {
-        title: "No completed orders",
-        desc: "Delivered orders will appear here",
-      },
-      rejected: {
-        title: "No rejected orders",
-        desc: "Orders you reject will be listed here",
-      },
+      active: { title: "No active orders", desc: "Orders you accept show up here" },
+      completed: { title: "Nothing completed yet", desc: "Delivered orders are listed here" },
+      rejected: { title: "No rejected orders", desc: "Orders you decline are listed here" },
     };
     const msg = messages[tab];
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-gray-100">
+        <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
           <svg
-            className="size-6 text-gray-400"
+            className="size-6 text-muted-foreground"
             fill="none"
             viewBox="0 0 24 24"
             strokeWidth={1.5}
@@ -163,8 +153,7 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      {/* Header */}
+    <div className="flex min-h-screen flex-col bg-canvas">
       <header className="sticky top-0 z-40 border-b bg-white px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -179,23 +168,29 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
             >
               Cat {restaurant.category}
             </Badge>
+            {restaurant.category === "A" ? (
+              <span className="text-[10px] text-muted-foreground">own delivery</span>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">partner delivery</span>
+            )}
           </div>
           <Button variant="ghost" size="sm" onClick={onLogout}>
             Logout
           </Button>
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {restaurant.address}, {restaurant.area}
+          {restaurant.address}
         </p>
       </header>
 
-      {/* Tabs */}
+      {(error || actionError) && (
+        <div className="bg-bad-soft px-4 py-2 text-sm text-bad">{actionError ?? error}</div>
+      )}
+
       <div className="flex-1 px-4 pt-3 pb-6">
         <Tabs defaultValue="new">
           <TabsList className="mb-3 w-full">
-            <TabsTrigger value="new">
-              {renderTabLabel("New", ordersByTab.new.length)}
-            </TabsTrigger>
+            <TabsTrigger value="new">{renderTabLabel("New", ordersByTab.new.length)}</TabsTrigger>
             <TabsTrigger value="active">
               {renderTabLabel("Active", ordersByTab.active.length)}
             </TabsTrigger>
@@ -217,10 +212,12 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
                     <OrderCard
                       key={order.id}
                       order={order}
-                      restaurant={restaurant}
                       onStatusUpdate={handleStatusUpdate}
                       onReject={handleRejectStart}
-                      onViewDetail={handleViewDetail}
+                      onViewDetail={(o) => {
+                        setSelectedId(o.id);
+                        setDetailOpen(true);
+                      }}
                     />
                   ))}
                 </div>
@@ -230,44 +227,34 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
         </Tabs>
       </div>
 
-      {/* Order Detail Sheet */}
       <OrderDetail
         order={selectedOrder}
-        restaurant={restaurant}
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onStatusUpdate={handleStatusUpdate}
         onReject={handleRejectStart}
       />
 
-      {/* Reject Dialog */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Order</DialogTitle>
+            <DialogTitle>Reject order</DialogTitle>
             <DialogDescription>
-              Please provide a reason for rejecting this order. The customer will
-              be notified.
+              Give a reason. The customer sees it on their tracking link, along with their refund.
             </DialogDescription>
           </DialogHeader>
           <Textarea
-            placeholder="e.g., Item unavailable, Kitchen closing soon..."
+            placeholder="e.g. Out of mutton, kitchen closing early"
             value={rejectionReason}
             onChange={(e) => setRejectionReason(e.target.value)}
             rows={3}
           />
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRejectDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRejectConfirm}
-            >
-              Confirm Reject
+            <Button variant="destructive" onClick={handleRejectConfirm}>
+              Confirm reject
             </Button>
           </DialogFooter>
         </DialogContent>

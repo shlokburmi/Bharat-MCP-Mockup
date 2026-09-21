@@ -1,6 +1,9 @@
 "use client";
 
-import { Order, Restaurant, STATUS_COLORS, STATUS_LABELS, OrderStatus } from "@/types";
+import { Order, OrderStatus } from "@/lib/types";
+import { OPERATOR_STATUS_COPY } from "@/lib/state-machine";
+import { partnerStatusNote, restaurantActions, STATUS_PILL } from "@/lib/operator-actions";
+import { rupees } from "@/lib/format";
 import {
   Sheet,
   SheetContent,
@@ -15,17 +18,14 @@ import { WhatsAppPreview } from "./whatsapp-preview";
 
 interface OrderDetailProps {
   order: Order | null;
-  restaurant: Restaurant;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onStatusUpdate: (orderId: string, newStatus: OrderStatus, extra?: Partial<Order>) => void;
+  onStatusUpdate: (orderId: string, newStatus: OrderStatus) => void;
   onReject: (orderId: string) => void;
 }
 
-function formatTimestamp(dateStr?: string): string {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleString("en-IN", {
+function formatTimestamp(dateStr: string): string {
+  return new Date(dateStr).toLocaleString("en-IN", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -33,21 +33,14 @@ function formatTimestamp(dateStr?: string): string {
   });
 }
 
-const timestampFields: { key: keyof Order; label: string }[] = [
-  { key: "createdAt", label: "Created" },
-  { key: "paidAt", label: "Paid" },
-  { key: "acceptedAt", label: "Accepted" },
-  { key: "rejectedAt", label: "Rejected" },
-  { key: "preparingAt", label: "Preparing" },
-  { key: "readyAt", label: "Ready" },
-  { key: "pickedUpAt", label: "Picked Up" },
-  { key: "outForDeliveryAt", label: "Out for Delivery" },
-  { key: "deliveredAt", label: "Delivered" },
-];
+const TONE_CLASS = {
+  good: "bg-good text-white hover:bg-good/90",
+  primary: "bg-brand text-white hover:bg-brand-dark",
+  danger: "",
+} as const;
 
 export function OrderDetail({
   order,
-  restaurant,
   open,
   onOpenChange,
   onStatusUpdate,
@@ -55,210 +48,173 @@ export function OrderDetail({
 }: OrderDetailProps) {
   if (!order) return null;
 
-  const statusColors = STATUS_COLORS[order.status];
-  const statusLabel = STATUS_LABELS[order.status];
-  const shortId = order.id.slice(-3).toUpperCase();
-
-  const renderActions = () => {
-    switch (order.status) {
-      case "sent_to_restaurant":
-        return (
-          <div className="flex gap-2">
-            <Button
-              className="flex-1 bg-green-600 text-white hover:bg-green-700"
-              onClick={() => onStatusUpdate(order.id, "accepted")}
-            >
-              Accept Order
-            </Button>
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={() => onReject(order.id)}
-            >
-              Reject
-            </Button>
-          </div>
-        );
-      case "accepted":
-        return (
-          <Button
-            className="w-full bg-orange-500 text-white hover:bg-orange-600"
-            onClick={() => onStatusUpdate(order.id, "preparing")}
-          >
-            Start Preparing
-          </Button>
-        );
-      case "preparing":
-        return (
-          <Button
-            className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
-            onClick={() => onStatusUpdate(order.id, "ready")}
-          >
-            Mark Ready
-          </Button>
-        );
-      case "ready":
-        if (restaurant.category === "A") {
-          if (order.orderType === "pickup") {
-            return (
-              <Button
-                className="w-full bg-cyan-600 text-white hover:bg-cyan-700"
-                onClick={() => onStatusUpdate(order.id, "picked_up")}
-              >
-                Mark as Picked Up by Customer
-              </Button>
-            );
-          }
-          return (
-            <Button
-              className="w-full bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => onStatusUpdate(order.id, "out_for_delivery")}
-            >
-              Out for Delivery
-            </Button>
-          );
-        }
-        return (
-          <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
-            {order.riderName
-              ? `Rider: ${order.riderName} - Awaiting pickup`
-              : "Waiting for delivery partner assignment"}
-          </div>
-        );
-      case "picked_up":
-      case "out_for_delivery":
-        if (restaurant.category === "B") {
-          return (
-            <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
-              {order.riderName
-                ? `Rider: ${order.riderName} - ${STATUS_LABELS[order.status]}`
-                : "Delivery partner en route"}
-            </div>
-          );
-        }
-        return null;
-      default:
-        return null;
-    }
-  };
+  const actions = restaurantActions(order);
+  const partnerNote = partnerStatusNote(order);
+  const pill = STATUS_PILL[order.status];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-xl">
         <SheetHeader>
           <div className="flex items-center justify-between pr-8">
-            <SheetTitle>Order #{shortId}</SheetTitle>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors}`}>
-              {statusLabel}
+            <SheetTitle>Order {order.code}</SheetTitle>
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${pill}`}
+            >
+              {OPERATOR_STATUS_COPY[order.status]}
             </span>
           </div>
           <SheetDescription>
-            {order.orderType === "delivery" ? "Delivery" : "Pickup"} order via{" "}
-            {order.paymentMethod.toUpperCase()}
+            {order.mode === "delivery" ? "Delivery" : "Pickup"} order
+            {order.paymentMethod ? ` via ${order.paymentMethod.toUpperCase()}` : ""}
           </SheetDescription>
         </SheetHeader>
 
         <div className="space-y-4 px-4 pb-6">
-          {/* Items */}
           <div>
             <h4 className="mb-2 text-sm font-semibold text-foreground">Items</h4>
             <div className="space-y-1.5">
-              {order.items.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
+              {order.items.map((item) => (
+                <div key={item.menuItemId} className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {item.quantity}x {item.name}
+                    {item.qty}x {item.name}
+                    {item.notes && <span className="italic"> · {item.notes}</span>}
                   </span>
-                  <span className="font-medium">Rs.{item.price * item.quantity}</span>
+                  <span className="font-medium tabular-nums">
+                    {rupees(item.price * item.qty)}
+                  </span>
                 </div>
               ))}
             </div>
             <Separator className="my-2" />
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <div className="flex justify-between">
+                <span>Item total</span>
+                <span className="tabular-nums">{rupees(order.totals.subtotal)}</span>
+              </div>
+              {order.mode === "delivery" && (
+                <div className="flex justify-between">
+                  <span>Delivery fee</span>
+                  <span className="tabular-nums">{rupees(order.totals.deliveryFee)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>Taxes and fees</span>
+                <span className="tabular-nums">
+                  {rupees(order.totals.taxes + order.totals.platformFee)}
+                </span>
+              </div>
+            </div>
+            <Separator className="my-2" />
             <div className="flex items-center justify-between text-sm font-semibold">
               <span>Total</span>
-              <span>Rs.{order.totalAmount}</span>
+              <span className="tabular-nums">{rupees(order.totals.total)}</span>
             </div>
           </div>
 
           <Separator />
 
-          {/* Customer Info */}
           <div>
             <h4 className="mb-2 text-sm font-semibold text-foreground">Customer</h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Name</span>
-                <span className="font-medium">{order.customerName}</span>
+                <span className="font-medium">{order.customer.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Phone</span>
-                <span className="font-medium">{order.customerPhone}</span>
+                <span className="font-medium">{order.customer.phone}</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <span className="shrink-0 text-muted-foreground">Address</span>
-                <span className="text-right font-medium">{order.customerAddress}</span>
-              </div>
+              {order.mode === "delivery" && (
+                <div className="flex justify-between gap-4">
+                  <span className="shrink-0 text-muted-foreground">Address</span>
+                  <span className="text-right font-medium">
+                    {order.customer.address}, {order.customer.area}
+                    {order.customer.landmark && ` (${order.customer.landmark})`}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Payment</span>
                 <Badge variant="outline" className="text-[10px]">
-                  {order.paymentMethod.toUpperCase()}
+                  {order.paymentMethod ? order.paymentMethod.toUpperCase() : "PENDING"}
                 </Badge>
               </div>
             </div>
           </div>
 
-          <Separator />
-
-          {/* Category B delivery partner info */}
-          {restaurant.category === "B" && order.riderId && (
+          {order.category === "B" && order.riderId && (
             <>
+              <Separator />
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-foreground">
-                  Delivery Partner
-                </h4>
+                <h4 className="mb-2 text-sm font-semibold text-foreground">Delivery Partner</h4>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Rider</span>
-                    <span className="font-medium">{order.riderName || "Unassigned"}</span>
+                    <span className="font-medium">{order.riderName ?? "Unassigned"}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Status</span>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColors}`}>
-                      {statusLabel}
-                    </span>
+                    <span className="text-muted-foreground">Phone</span>
+                    <span className="font-medium">{order.riderPhone ?? "-"}</span>
                   </div>
                 </div>
               </div>
-              <Separator />
             </>
           )}
 
-          {/* Timeline */}
+          <Separator />
+
           <div>
             <h4 className="mb-2 text-sm font-semibold text-foreground">Timeline</h4>
             <div className="space-y-1.5">
-              {timestampFields
-                .filter(({ key }) => order[key])
-                .map(({ key, label }) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between text-xs"
-                  >
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium">
-                      {formatTimestamp(order[key] as string)}
-                    </span>
-                  </div>
-                ))}
+              {order.timeline.map((event, i) => (
+                <div key={`${event.status}-${i}`} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    {OPERATOR_STATUS_COPY[event.status]}
+                    <span className="ml-1 text-[10px] opacity-70">({event.actor})</span>
+                  </span>
+                  <span className="font-medium">{formatTimestamp(event.at)}</span>
+                </div>
+              ))}
             </div>
           </div>
 
+          {order.rejectionReason && (
+            <div className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
+              Rejected: {order.rejectionReason}
+            </div>
+          )}
+
           <Separator />
 
-          {/* WhatsApp Preview */}
           <WhatsAppPreview order={order} />
 
-          {/* Actions */}
-          <div className="pt-2">{renderActions()}</div>
+          {(actions.length > 0 || partnerNote) && (
+            <div className="space-y-2 pt-2">
+              {actions.length > 0 && (
+                <div className="flex gap-2">
+                  {actions.map((action) => (
+                    <Button
+                      key={action.status}
+                      variant={action.tone === "danger" ? "destructive" : "default"}
+                      className={`flex-1 ${TONE_CLASS[action.tone]}`}
+                      onClick={() => {
+                        if (action.needsReason) onReject(order.id);
+                        else onStatusUpdate(order.id, action.status);
+                      }}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {partnerNote && (
+                <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                  {partnerNote}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>

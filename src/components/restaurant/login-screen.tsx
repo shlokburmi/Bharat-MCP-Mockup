@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { getStore } from "@/data/store";
-import { Restaurant } from "@/types";
+import { fetchAllRestaurants } from "@/lib/api";
+import { Restaurant } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,35 +12,40 @@ interface LoginScreenProps {
   onLogin: (restaurant: Restaurant) => void;
 }
 
+const digits = (s: string) => s.replace(/\D/g, "").slice(-10);
+
+/**
+ * Restaurant access is mocked as a magic link to the owner's WhatsApp number —
+ * no password. Entering a registered number is the whole of "auth" here.
+ */
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-
-    const store = getStore();
-    const normalizedPhone = phone.startsWith("+91") ? phone : `+91${phone}`;
-    const restaurant = store.getRestaurantByWhatsapp(normalizedPhone);
-
-    if (restaurant) {
-      onLogin(restaurant);
-    } else {
-      setError("No restaurant found with this number");
+    try {
+      const restaurants = await fetchAllRestaurants();
+      const match = restaurants.find((r) => digits(r.phone) === digits(phone));
+      if (match) onLogin(match);
+      else setError("No restaurant is registered with this number");
+    } catch {
+      setError("Could not reach the server. Is the dev server running?");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-green-100">
+          <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-good-soft">
             <svg
-              className="size-6 text-green-600"
+              className="size-6 text-good"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={1.5}
@@ -55,7 +60,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
           <CardTitle className="text-lg">Restaurant Dashboard</CardTitle>
           <CardDescription>
-            Enter your registered WhatsApp number to access your orders
+            Enter your registered WhatsApp number to see your orders
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -69,30 +74,25 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="9876543210"
-                  value={phone.replace(/^\+91/, "")}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, "").slice(0, 10);
-                    setPhone(val);
-                  }}
+                  placeholder="9845011201"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                   className="flex-1"
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Use any number from 9876543210 to 9876543217
+                Seeded restaurants use 9845011201 through 9845011208.
               </p>
             </div>
 
             {error && (
-              <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-                {error}
-              </div>
+              <div className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</div>
             )}
 
             <Button
               type="submit"
-              className="w-full bg-green-600 text-white hover:bg-green-700"
-              disabled={loading || phone.replace(/^\+91/, "").length !== 10}
+              className="w-full bg-good text-white hover:bg-good/90"
+              disabled={loading || phone.length !== 10}
             >
               {loading ? "Signing in..." : "Sign In"}
             </Button>

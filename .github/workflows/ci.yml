@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bharat-mcp-mockup/package-lock.json
+      - run: npm ci
+        working-directory: bharat-mcp-mockup
+      # build runs first so Next generates the route types typecheck depends on
+      - run: npm run build
+        working-directory: bharat-mcp-mockup
+      - run: npm run typecheck
+        working-directory: bharat-mcp-mockup
+      - run: npm run lint
+        working-directory: bharat-mcp-mockup

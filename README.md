@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bharat MCP — mockup
 
-## Getting Started
-
-First, run the development server:
+Ordering food from inside an assistant conversation. Four surfaces, one order, no real
+payments, restaurants or riders anywhere.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Surface | Route | Who it's for |
+| --- | --- | --- |
+| Assistant chat simulator | `/chat` | Customer — search, pick a dish, get a link |
+| Dynamic order link | `/order/[id]` | Customer — summary → payment → live tracking |
+| Restaurant interface | `/restaurant` | Owner — inbox, accept/reject, preparing/ready |
+| Delivery partner | `/rider` | Partner rider — picked up, delivered |
+| Ops console | `/admin` | Internal — onboarding, menu builder, Cat A/B, test orders |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Read [`docs/CONTRACT.md`](docs/CONTRACT.md) before touching `src/lib/`. That is the shared
+piece every surface depends on.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Demo script
 
-## Learn More
+Open three tabs side by side: `/chat`, `/restaurant`, `/rider`.
 
-To learn more about Next.js, take a look at the following resources:
+1. **`/chat`** — ask for *"best biryani near Koramangala"*. Five restaurants come back from
+   what looks like an MCP tool call. Add a dish, adjust quantities, confirm the address,
+   generate the payment link.
+2. **`/order/[id]`** — the bill and a 30-minute countdown. Pay by UPI, card or cash. Tick
+   *simulate a declined payment* first if you want to show the failure path.
+3. **`/restaurant`** — sign in with `9845011202` (Meghana Foods). The order is already in
+   the inbox, with the WhatsApp message the owner would have received. Accept it, start
+   preparing, mark it ready. Watch the customer tab update without a refresh.
+4. **`/rider`** — pick a rider. Meghana is Category B, so a partner rider has the job:
+   mark it picked up, then out for delivery, then delivered.
+5. Run it again with Mavalli Tiffin Rooms (`9845011201`). That one is **Category A**, so the
+   restaurant drives the delivery leg itself and no rider is involved — and the customer's
+   tracking screen looks exactly the same. That is the point.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Ops console** (`/admin`): onboard a restaurant, scan a menu photo into structured items,
+flip Category A/B, check partner coverage, and place a test order that lands in the
+restaurant inbox like a real one. The **Reset demo** button on the Orders tab wipes
+everything back to seed.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Working alone? **Demo controls** at the bottom of the order page advances an order one
+step as the restaurant or rider would.
 
-## Deploy on Vercel
+## Decisions this mockup makes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Dynamic links stay valid 30 minutes.** The countdown is visible to the customer, and
+  unpaid links flip to `expired` on the next read.
+- **Restaurant access is a magic link to the owner's WhatsApp number** — no password.
+- **The customer is never told whether an order is Category A or B.** The tracking
+  timeline is identical; only who performs the delivery leg differs.
+- **One restaurant per order.** Mixing is rejected at creation.
+- **A restaurant can't go live without an available menu item.**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Architecture
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · shadcn/ui.
+
+State lives in the **server process**, behind route handlers under `/api`, and clients
+poll it. That is why three tabs on one laptop stay consistent, and why swapping the mock
+for a real backend means replacing `src/lib/store.ts` rather than rewriting screens.
+Nothing is persisted — restarting the dev server clears every order.
+
+The operator surfaces use the shadcn primitives in `src/components/ui`; the customer
+surfaces use the small hand-rolled kit in `src/components/ui/kit.tsx`. Both are driven by
+one palette defined in `src/app/globals.css`.
+
+## Checks
+
+```bash
+npm run build      # also generates the route types typecheck needs
+npm run typecheck
+npm run lint
+```
+
+CI runs all three on every PR.

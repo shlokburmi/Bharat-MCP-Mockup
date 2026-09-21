@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,27 +20,60 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Restaurant } from "@/types";
-import { useStore } from "@/data/use-store";
+import { fetchCoverage, updateRestaurant } from "@/lib/api";
+import { rupees } from "@/lib/format";
+import type { CoverageReport } from "@/lib/store-input";
+import { useRestaurants } from "@/lib/use-restaurants";
 import { OnboardingForm } from "./onboarding-form";
 import { MenuBuilder } from "./menu-builder";
 import { Plus, CheckCircle2, XCircle } from "lucide-react";
 
 export function RestaurantList() {
-  const store = useStore();
-  const restaurants = store.getRestaurants();
-
+  const { restaurants, loading, error, refresh } = useRestaurants();
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<{ id: string; report: CoverageReport[] } | null>(
+    null,
+  );
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  function handleToggleActive(id: string, current: boolean) {
-    store.updateRestaurant(id, { isActive: !current });
+  const detail = restaurants.find((r) => r.id === selectedId) ?? null;
+
+  // Coverage is only meaningful for Category B, and only for the open sheet.
+  // Tagged with the restaurant id so a stale report is never shown against a
+  // different restaurant.
+  const coverageFor = detail && coverage?.id === detail.id ? coverage.report : null;
+
+  useEffect(() => {
+    if (!detail || detail.category !== "B") return;
+    const id = detail.id;
+    const timer = setTimeout(() => {
+      void fetchCoverage(id)
+        .then((report) => setCoverage({ id, report }))
+        .catch(() => setCoverage(null));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [detail]);
+
+  async function handleToggleLive(id: string, next: boolean) {
+    setActionError(null);
+    try {
+      await updateRestaurant(id, { live: next });
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update the restaurant");
+    }
   }
 
-  // Re-read the restaurant when viewing detail (in case menu was changed)
-  const detailRestaurant = selectedRestaurant
-    ? store.getRestaurant(selectedRestaurant.id) ?? selectedRestaurant
-    : null;
+  async function handleToggleCategory(id: string, next: "A" | "B") {
+    setActionError(null);
+    try {
+      await updateRestaurant(id, { category: next });
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not change the category");
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -48,7 +81,7 @@ export function RestaurantList() {
         <div>
           <h2 className="text-lg font-semibold">Restaurants</h2>
           <p className="text-sm text-muted-foreground">
-            {restaurants.length} restaurants onboarded
+            {loading ? "Loading…" : `${restaurants.length} onboarded · ${restaurants.filter((r) => r.live).length} live`}
           </p>
         </div>
         <Button onClick={() => setShowOnboarding(true)}>
@@ -56,6 +89,10 @@ export function RestaurantList() {
           Add Restaurant
         </Button>
       </div>
+
+      {(error || actionError) && (
+        <p className="rounded bg-bad-soft px-3 py-2 text-sm text-bad">{actionError ?? error}</p>
+      )}
 
       <Table>
         <TableHeader>
@@ -66,156 +103,175 @@ export function RestaurantList() {
             <TableHead>Cuisine</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>WhatsApp</TableHead>
-            <TableHead>Onboarded</TableHead>
+            <TableHead>Min order</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {restaurants.map((r) => (
-            <TableRow
-              key={r.id}
-              className="cursor-pointer"
-              onClick={() => setSelectedRestaurant(r)}
-            >
-              <TableCell className="font-medium">{r.name}</TableCell>
+            <TableRow key={r.id} className="cursor-pointer" onClick={() => setSelectedId(r.id)}>
+              <TableCell className="font-medium">
+                {r.emoji} {r.name}
+              </TableCell>
               <TableCell className="text-muted-foreground">{r.area}</TableCell>
               <TableCell>
-                <div className="flex items-center gap-1.5">
-                  <Badge
-                    variant="secondary"
-                    className={
-                      r.category === "A"
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                        : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
-                    }
-                  >
-                    Cat {r.category}
-                  </Badge>
-                  {r.category === "B" && (
-                    r.coverageVerified ? (
-                      <CheckCircle2 className="size-3.5 text-green-600" />
-                    ) : (
-                      <XCircle className="size-3.5 text-red-400" />
-                    )
-                  )}
-                </div>
+                <Badge
+                  variant="secondary"
+                  className={
+                    r.category === "A"
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-purple-100 text-purple-700"
+                  }
+                >
+                  Cat {r.category}
+                </Badge>
               </TableCell>
               <TableCell>
                 <span className="text-muted-foreground">
-                  {r.cuisine.slice(0, 2).join(", ")}
-                  {r.cuisine.length > 2 && ` +${r.cuisine.length - 2}`}
+                  {r.cuisines.slice(0, 2).join(", ")}
+                  {r.cuisines.length > 2 && ` +${r.cuisines.length - 2}`}
                 </span>
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`inline-block size-2 rounded-full ${
-                      r.isActive ? "bg-green-500" : "bg-gray-400"
+                      r.live ? "bg-good" : "bg-muted-foreground/40"
                     }`}
                   />
-                  <span className="text-sm">{r.isActive ? "Active" : "Inactive"}</span>
+                  <span className="text-sm">{r.live ? "Live" : "Dark"}</span>
                 </div>
               </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">
-                {r.whatsappNumber}
+              <TableCell className="font-mono text-xs text-muted-foreground">{r.phone}</TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
+                {rupees(r.minOrder)}
               </TableCell>
-              <TableCell className="text-muted-foreground">{r.onboardedAt}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
 
-      {/* Onboarding Dialog */}
-      <OnboardingForm open={showOnboarding} onOpenChange={setShowOnboarding} />
+      {!loading && restaurants.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted-foreground">
+          No restaurants yet. Onboard one to get started.
+        </p>
+      )}
 
-      {/* Restaurant Detail Sheet */}
+      <OnboardingForm
+        open={showOnboarding}
+        onOpenChange={setShowOnboarding}
+        onCreated={refresh}
+      />
+
       <Sheet
-        open={!!selectedRestaurant}
+        open={!!selectedId}
         onOpenChange={(open) => {
-          if (!open) setSelectedRestaurant(null);
+          if (!open) setSelectedId(null);
         }}
       >
         <SheetContent side="right" className="sm:max-w-xl overflow-y-auto">
-          {detailRestaurant && (
+          {detail && (
             <>
               <SheetHeader>
-                <SheetTitle>{detailRestaurant.name}</SheetTitle>
-                <SheetDescription>
-                  {detailRestaurant.address}, {detailRestaurant.area}
-                </SheetDescription>
+                <SheetTitle>
+                  {detail.emoji} {detail.name}
+                </SheetTitle>
+                <SheetDescription>{detail.address}</SheetDescription>
               </SheetHeader>
 
               <div className="space-y-4 p-4">
-                {/* Restaurant Info */}
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <span className="text-muted-foreground">Category</span>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                      <Badge
-                        variant="secondary"
-                        className={
-                          detailRestaurant.category === "A"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-purple-100 text-purple-700"
-                        }
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant={detail.category === "A" ? "default" : "outline"}
+                        onClick={() => handleToggleCategory(detail.id, "A")}
                       >
-                        Cat {detailRestaurant.category}
-                      </Badge>
-                      {detailRestaurant.category === "B" && (
-                        detailRestaurant.coverageVerified ? (
-                          <span className="flex items-center gap-1 text-xs text-green-700">
-                            <CheckCircle2 className="size-3" />
-                            Verified
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs text-red-500">
-                            <XCircle className="size-3" />
-                            Not verified
-                          </span>
-                        )
-                      )}
+                        A
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={detail.category === "B" ? "default" : "outline"}
+                        onClick={() => handleToggleCategory(detail.id, "B")}
+                      >
+                        B
+                      </Button>
                     </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {detail.category === "A" ? "Delivers itself" : "Partner rider delivers"}
+                    </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">WhatsApp</span>
-                    <p className="mt-0.5 font-mono text-xs">
-                      {detailRestaurant.whatsappNumber}
-                    </p>
+                    <p className="mt-0.5 font-mono text-xs">{detail.phone}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Hours</span>
-                    <p className="mt-0.5">
-                      {detailRestaurant.hours.open} – {detailRestaurant.hours.close}
-                    </p>
+                    <span className="text-muted-foreground">Prep time</span>
+                    <p className="mt-0.5">{detail.prepTimeMins} min</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Cuisine</span>
-                    <p className="mt-0.5">{detailRestaurant.cuisine.join(", ")}</p>
+                    <p className="mt-0.5">{detail.cuisines.join(", ")}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Status</span>
+                    <span className="text-muted-foreground">Delivery fee</span>
+                    <p className="mt-0.5 tabular-nums">{rupees(detail.deliveryFee)}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Min order</span>
+                    <p className="mt-0.5 tabular-nums">{rupees(detail.minOrder)}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Live</span>
                     <div className="mt-1 flex items-center gap-2">
                       <Switch
                         size="sm"
-                        checked={detailRestaurant.isActive}
-                        onCheckedChange={() =>
-                          handleToggleActive(detailRestaurant.id, detailRestaurant.isActive)
-                        }
+                        checked={detail.live}
+                        onCheckedChange={() => handleToggleLive(detail.id, !detail.live)}
                       />
                       <span className="text-xs">
-                        {detailRestaurant.isActive ? "Active" : "Inactive"}
+                        {detail.live
+                          ? "Visible in assistant search"
+                          : "Hidden until it has an available menu item"}
                       </span>
                     </div>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Onboarded</span>
-                    <p className="mt-0.5">{detailRestaurant.onboardedAt}</p>
-                  </div>
                 </div>
+
+                {detail.category === "B" && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-sm font-semibold">Partner coverage</p>
+                      <p className="text-xs text-muted-foreground">
+                        Every delivery area needs an online rider
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {(coverageFor ?? []).map((c) => (
+                          <li key={c.area} className="flex items-center gap-1.5 text-xs">
+                            {c.covered ? (
+                              <CheckCircle2 className="size-3.5 text-good" />
+                            ) : (
+                              <XCircle className="size-3.5 text-bad" />
+                            )}
+                            <span className="font-medium">{c.area}</span>
+                            <span className="text-muted-foreground">
+                              {c.covered ? c.riders.join(", ") : "no rider covers this area"}
+                            </span>
+                          </li>
+                        ))}
+                        {!coverageFor && (
+                          <li className="text-xs text-muted-foreground">Checking coverage…</li>
+                        )}
+                      </ul>
+                    </div>
+                  </>
+                )}
 
                 <Separator />
 
-                {/* Menu Builder */}
-                <MenuBuilder restaurant={detailRestaurant} />
+                <MenuBuilder restaurant={detail} onChanged={refresh} />
               </div>
             </>
           )}

@@ -1,50 +1,81 @@
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+
+const SURFACES = [
+  {
+    href: "/chat",
+    title: "Assistant chat",
+    who: "Customer",
+    detail: "Search restaurants, pick dishes, get a payment link — the demo opener.",
+    emoji: "✦",
+  },
+  {
+    href: "/restaurant",
+    title: "Restaurant interface",
+    who: "Owner",
+    detail: "Incoming orders, accept or reject, preparing and ready.",
+    emoji: "🧑‍🍳",
+  },
+  {
+    href: "/rider",
+    title: "Delivery partner",
+    who: "Rider",
+    detail: "Assigned jobs, mark picked up and delivered.",
+    emoji: "🛵",
+  },
+  {
+    href: "/admin",
+    title: "Ops console",
+    who: "Internal",
+    detail: "Onboard restaurants, build menus, Category A/B, test orders.",
+    emoji: "🎛️",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8 gap-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold tracking-tight">Bharat MCP</h1>
-        <p className="text-muted-foreground mt-2">
-          Restaurant Ordering & Delivery — Mockup
-        </p>
+    <main className="mx-auto w-full max-w-2xl px-4 py-12">
+      <div className="flex items-center gap-2.5">
+        <span aria-hidden className="grid size-9 place-items-center rounded-xl bg-brand text-white">
+          ॐ
+        </span>
+        <div>
+          <h1 className="text-lg font-semibold">Bharat MCP</h1>
+          <p className="text-sm text-muted-foreground">
+            Food ordering through an assistant · mockup
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-4 w-full max-w-md">
-        <Link
-          href="/restaurant"
-          className="flex flex-col p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
-        >
-          <span className="text-lg font-semibold">Restaurant Interface</span>
-          <span className="text-sm text-muted-foreground">
-            Order inbox, accept/reject, status updates
-          </span>
-        </Link>
-
-        <Link
-          href="/rider"
-          className="flex flex-col p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
-        >
-          <span className="text-lg font-semibold">Rider Interface</span>
-          <span className="text-sm text-muted-foreground">
-            Delivery partner — pickup & delivery tracking
-          </span>
-        </Link>
-
-        <Link
-          href="/admin"
-          className="flex flex-col p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
-        >
-          <span className="text-lg font-semibold">Ops Console</span>
-          <span className="text-sm text-muted-foreground">
-            Onboarding, menu builder, test orders
-          </span>
-        </Link>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        Dev B surfaces — operator-facing
+      <p className="mt-6 text-[15px] leading-relaxed text-muted-foreground">
+        Five surfaces, one order. Every screen reads the same in-memory store on the server, so an
+        order paid in one tab shows up in the others within a couple of seconds. Start in the
+        assistant chat — the customer&apos;s order link is created from there.
       </p>
-    </div>
+
+      <ul className="mt-6 space-y-2">
+        {SURFACES.map((s) => (
+          <li key={s.title} className="rounded-2xl border border-border bg-card transition-colors hover:border-muted-foreground/30">
+            <Link href={s.href} className="flex items-start gap-3 p-4">
+              <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-lg">
+                {s.emoji}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="text-[15px] font-semibold">{s.title}</span>
+                  <Badge variant="secondary">{s.who}</Badge>
+                </span>
+                <span className="mt-0.5 block text-sm text-muted-foreground">{s.detail}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-8 text-xs text-muted-foreground">
+        No real payments, restaurants or riders are involved. Orders live in the server process and
+        reset when it restarts, or from the ops console.
+      </p>
+    </main>
   );
 }

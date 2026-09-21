@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -14,333 +14,339 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Order, MenuItem, Restaurant } from "@/types";
-import { useStore } from "@/data/use-store";
-import { Minus, Plus, CheckCircle2, RotateCcw, ShoppingCart } from "lucide-react";
+import { createOrder, fetchMenu, payOrder } from "@/lib/api";
+import { rupees } from "@/lib/format";
+import { useRestaurants } from "@/lib/use-restaurants";
+import { FulfilmentMode, MenuItem, Order, PaymentMethod } from "@/lib/types";
+import { Loader2 } from "lucide-react";
 
 function VegIcon({ isVeg }: { isVeg: boolean }) {
-  if (isVeg) {
-    return (
-      <span className="inline-flex size-4 items-center justify-center rounded-sm border-2 border-green-600" title="Vegetarian">
-        <span className="size-2 rounded-full bg-green-600" />
-      </span>
-    );
-  }
   return (
-    <span className="inline-flex size-4 items-center justify-center rounded-sm border-2 border-red-600" title="Non-vegetarian">
-      <svg viewBox="0 0 10 10" className="size-2.5 fill-red-600">
-        <polygon points="5,0 10,10 0,10" />
-      </svg>
+    <span
+      className={`inline-flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
+        isVeg ? "border-good" : "border-bad"
+      }`}
+    >
+      <span className={`size-1.5 rounded-full ${isVeg ? "bg-good" : "bg-bad"}`} />
     </span>
   );
 }
 
-interface CartItem {
-  menuItem: MenuItem;
-  quantity: number;
-}
-
+/**
+ * "Run a test order" — builds a real order through the same API the customer
+ * link uses, so the restaurant and rider screens see it exactly as they would
+ * a genuine one.
+ */
 export function TestOrder() {
-  const store = useStore();
-  const restaurants = store.getRestaurants().filter((r) => r.isActive);
+  const { restaurants } = useRestaurants();
+  const live = useMemo(() => restaurants.filter((r) => r.live), [restaurants]);
 
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>("");
-  const [cart, setCart] = useState<Map<string, CartItem>>(new Map());
-  const [customerName, setCustomerName] = useState("Test User");
-  const [customerPhone, setCustomerPhone] = useState("9999999999");
-  const [customerAddress, setCustomerAddress] = useState("123, Test Street, Bangalore");
-  const [paymentMethod, setPaymentMethod] = useState<"upi" | "cod">("upi");
-  const [submitted, setSubmitted] = useState<string | null>(null);
+  const [restaurantId, setRestaurantId] = useState("");
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [loadingMenu, setLoadingMenu] = useState(false);
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [name, setName] = useState("Test Customer");
+  const [phone, setPhone] = useState("+91 90000 00000");
+  const [address, setAddress] = useState("1, Test Street, Ground Floor");
+  const [mode, setMode] = useState<FulfilmentMode>("delivery");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi");
+  const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState<Order | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedRestaurant = useMemo(() => {
-    if (!selectedRestaurantId) return null;
-    return store.getRestaurant(selectedRestaurantId) ?? null;
-  }, [store, selectedRestaurantId]);
+  const restaurant = live.find((r) => r.id === restaurantId) ?? null;
 
-  const total = useMemo(() => {
-    let sum = 0;
-    cart.forEach((item) => {
-      sum += item.menuItem.price * item.quantity;
-    });
-    return sum;
-  }, [cart]);
+  const loadMenu = useCallback(async (id: string) => {
+    setLoadingMenu(true);
+    try {
+      setMenu(await fetchMenu(id));
+    } finally {
+      setLoadingMenu(false);
+    }
+  }, []);
 
-  function handleSelectRestaurant(id: string) {
-    setSelectedRestaurantId(id);
-    setCart(new Map());
-    setSubmitted(null);
-  }
+  useEffect(() => {
+    if (!restaurantId) return;
+    const timer = setTimeout(() => void loadMenu(restaurantId), 0);
+    return () => clearTimeout(timer);
+  }, [restaurantId, loadMenu]);
 
-  function handleQuantityChange(item: MenuItem, delta: number) {
+  const subtotal = useMemo(
+    () =>
+      Object.entries(cart).reduce((sum, [id, qty]) => {
+        const item = menu.find((m) => m.id === id);
+        return item ? sum + item.price * qty : sum;
+      }, 0),
+    [cart, menu],
+  );
+
+  const short = restaurant ? restaurant.minOrder - subtotal : 0;
+  const lines = Object.entries(cart).filter(([, qty]) => qty > 0);
+
+  function setQty(id: string, delta: number) {
     setCart((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(item.id);
-      const newQty = (existing?.quantity ?? 0) + delta;
-      if (newQty <= 0) {
-        next.delete(item.id);
-      } else {
-        next.set(item.id, { menuItem: item, quantity: newQty });
-      }
-      return next;
+      const next = Math.max(0, (prev[id] ?? 0) + delta);
+      const copy = { ...prev };
+      if (next === 0) delete copy[id];
+      else copy[id] = next;
+      return copy;
     });
   }
 
-  function handlePlaceOrder() {
-    if (!selectedRestaurant || cart.size === 0) return;
-
-    const items = Array.from(cart.values()).map((ci) => ({
-      menuItemId: ci.menuItem.id,
-      name: ci.menuItem.name,
-      quantity: ci.quantity,
-      price: ci.menuItem.price,
-    }));
-
-    const orderId = `ord-test-${Date.now().toString(36)}`;
-
-    const order: Order = {
-      id: orderId,
-      restaurantId: selectedRestaurant.id,
-      restaurantName: selectedRestaurant.name,
-      customerName: customerName.trim() || "Test User",
-      customerPhone: `+91${customerPhone.trim()}`,
-      customerAddress: customerAddress.trim(),
-      items,
-      totalAmount: total,
-      status: "sent_to_restaurant",
-      orderType: "delivery",
-      category: selectedRestaurant.category,
-      paymentMethod,
-      createdAt: new Date().toISOString(),
-      paidAt: new Date().toISOString(),
-      dynamicLinkExpiresAt: new Date(Date.now() + 30 * 60000).toISOString(),
-    };
-
-    store.addOrder(order);
-    setSubmitted(orderId);
-    setCart(new Map());
+  async function handlePlaceOrder() {
+    if (!restaurant) return;
+    setPlacing(true);
+    setError(null);
+    try {
+      const order = await createOrder({
+        restaurantId: restaurant.id,
+        items: lines.map(([menuItemId, qty]) => ({ menuItemId, qty })),
+        mode,
+        customer: {
+          name,
+          phone,
+          address: mode === "pickup" ? "" : address,
+          area: restaurant.deliversTo[0] ?? restaurant.area,
+          landmark: "Ops console test order",
+        },
+        source: "ops_test",
+      });
+      // Pay immediately so it lands in the restaurant inbox, like a real one.
+      setPlaced(await payOrder(order.id, paymentMethod));
+      setCart({});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not place the test order");
+    } finally {
+      setPlacing(false);
+    }
   }
 
-  function handleReset() {
-    store.reset();
-    setSelectedRestaurantId("");
-    setCart(new Map());
-    setSubmitted(null);
-    setCustomerName("Test User");
-    setCustomerPhone("9999999999");
-    setCustomerAddress("123, Test Street, Bangalore");
+  if (placed) {
+    return (
+      <div className="mx-auto max-w-md space-y-4 py-10 text-center">
+        <p className="text-4xl">✅</p>
+        <div>
+          <h2 className="text-lg font-semibold">Test order {placed.code} placed</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {placed.restaurantName} · {rupees(placed.totals.total)} · paid by{" "}
+            {placed.paymentMethod?.toUpperCase()}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            It is now sitting in the restaurant inbox
+            {placed.riderName ? `, with ${placed.riderName} assigned to deliver it` : ""}.
+          </p>
+        </div>
+        <div className="flex justify-center gap-2">
+          <Link
+            href={`/order/${placed.id}`}
+            className="inline-flex h-10 items-center rounded-lg bg-brand px-4 text-sm font-medium text-white hover:bg-brand-dark"
+          >
+            Open customer link
+          </Link>
+          <Link
+            href="/restaurant"
+            className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium hover:bg-accent"
+          >
+            Restaurant inbox
+          </Link>
+          <Button variant="outline" onClick={() => setPlaced(null)}>
+            Place another
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Test Order</h2>
-          <p className="text-sm text-muted-foreground">
-            Create a mock test order for any active restaurant
-          </p>
-        </div>
-        <Button variant="outline" onClick={handleReset}>
-          <RotateCcw className="size-4" />
-          Reset All Data
-        </Button>
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Test Order</h2>
+        <p className="text-sm text-muted-foreground">
+          Places a real order through the same API a customer would, then pays it.
+        </p>
       </div>
 
-      {/* Restaurant Selection */}
-      <div className="grid gap-1.5">
-        <Label>Select Restaurant</Label>
-        <Select value={selectedRestaurantId} onValueChange={(v) => { if (v !== null) handleSelectRestaurant(v); }}>
-          <SelectTrigger className="w-full max-w-sm">
-            <SelectValue placeholder="Choose a restaurant..." />
+      <div className="space-y-1.5">
+        <Label>Restaurant</Label>
+        <Select
+          value={restaurantId}
+          onValueChange={(v) => {
+            setRestaurantId(v ?? "");
+            setCart({});
+            setMenu([]);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-96">
+            <SelectValue placeholder="Pick a live restaurant" />
           </SelectTrigger>
           <SelectContent>
-            {restaurants.map((r) => (
+            {live.map((r) => (
               <SelectItem key={r.id} value={r.id}>
-                {r.name} ({r.area})
+                {r.name} — Cat {r.category} · min {rupees(r.minOrder)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {live.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No live restaurants. Switch one live on the Restaurants tab first.
+          </p>
+        )}
       </div>
 
-      {/* Success Message */}
-      {submitted && (
-        <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-900 dark:bg-green-950/30">
-          <CheckCircle2 className="size-5 text-green-600" />
-          <div>
-            <p className="font-medium text-green-800 dark:text-green-400">
-              Order placed successfully!
-            </p>
-            <p className="text-sm text-green-700 dark:text-green-500">
-              Order ID: <span className="font-mono">{submitted}</span>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {selectedRestaurant && (
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Menu Items */}
-          <div className="lg:col-span-2 space-y-3">
-            <h3 className="text-sm font-semibold">
-              Menu — {selectedRestaurant.name}
-            </h3>
-
-            {selectedRestaurant.menu.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                This restaurant has no menu items yet.
-              </p>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {selectedRestaurant.menu
-                  .filter((item) => item.isAvailable)
-                  .map((item) => {
-                    const inCart = cart.get(item.id);
-                    return (
-                      <Card
-                        key={item.id}
-                        className={`flex items-start gap-3 p-3 transition-colors ${
-                          inCart ? "ring-2 ring-primary/20 bg-primary/5" : ""
-                        }`}
+      {restaurant && (
+        <>
+          <Separator />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold">Menu</p>
+              {loadingMenu && <p className="text-sm text-muted-foreground">Loading menu…</p>}
+              <ul className="divide-y divide-border">
+                {menu.map((item) => (
+                  <li key={item.id} className="flex items-center gap-2 py-2">
+                    <VegIcon isVeg={item.veg} />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`truncate text-sm ${item.available ? "" : "text-muted-foreground line-through"}`}
                       >
-                        <VegIcon isVeg={item.isVeg} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium leading-tight">{item.name}</p>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                              {item.description}
-                            </p>
-                          )}
-                          <p className="text-sm font-semibold mt-1 tabular-nums">
-                            &#8377;{item.price}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {inCart ? (
-                            <>
-                              <Button
-                                size="icon-xs"
-                                variant="outline"
-                                onClick={() => handleQuantityChange(item, -1)}
-                              >
-                                <Minus className="size-3" />
-                              </Button>
-                              <span className="w-6 text-center text-sm font-semibold tabular-nums">
-                                {inCart.quantity}
-                              </span>
-                              <Button
-                                size="icon-xs"
-                                variant="outline"
-                                onClick={() => handleQuantityChange(item, 1)}
-                              >
-                                <Plus className="size-3" />
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleQuantityChange(item, 1)}
-                            >
-                              Add
-                            </Button>
-                          )}
-                        </div>
-                      </Card>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-
-          {/* Order Summary Sidebar */}
-          <div className="space-y-4">
-            <Card className="p-4 space-y-4">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <ShoppingCart className="size-4" />
-                Order Summary
-              </h3>
-
-              {cart.size === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
-                  No items selected yet
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {Array.from(cart.values()).map((ci) => (
-                    <div key={ci.menuItem.id} className="flex justify-between text-sm">
-                      <span>
-                        {ci.menuItem.name} x{ci.quantity}
-                      </span>
-                      <span className="tabular-nums font-medium">
-                        &#8377;{ci.menuItem.price * ci.quantity}
-                      </span>
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {rupees(item.price)}
+                      </p>
                     </div>
-                  ))}
-                  <Separator />
-                  <div className="flex justify-between font-semibold">
-                    <span>Total</span>
-                    <span className="tabular-nums">&#8377;{total}</span>
-                  </div>
+                    <div className="flex items-center gap-1 rounded-lg border border-border">
+                      <button
+                        type="button"
+                        aria-label={`Remove one ${item.name}`}
+                        className="px-2 text-muted-foreground disabled:opacity-40"
+                        disabled={!cart[item.id]}
+                        onClick={() => setQty(item.id, -1)}
+                      >
+                        −
+                      </button>
+                      <span className="w-5 text-center text-sm tabular-nums">
+                        {cart[item.id] ?? 0}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Add one ${item.name}`}
+                        className="px-2 text-muted-foreground disabled:opacity-40"
+                        disabled={!item.available}
+                        onClick={() => setQty(item.id, 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold">Order details</p>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="t-name">Customer</Label>
+                  <Input id="t-name" value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="t-phone">Phone</Label>
+                  <Input id="t-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                </div>
+              </div>
+
+              {mode === "delivery" && (
+                <div className="space-y-1">
+                  <Label htmlFor="t-address">Address</Label>
+                  <Input
+                    id="t-address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                  />
                 </div>
               )}
 
-              <Separator />
-
-              {/* Customer Details */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Customer Details
-                </p>
-                <div className="grid gap-1.5">
-                  <Input
-                    placeholder="Customer Name"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-xs text-muted-foreground">+91</span>
-                    <Input
-                      placeholder="Phone"
-                      value={customerPhone}
-                      onChange={(e) =>
-                        setCustomerPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
-                      }
-                    />
-                  </div>
-                  <Input
-                    placeholder="Delivery Address"
-                    value={customerAddress}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                  />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>Mode</Label>
+                  <Select
+                    value={mode}
+                    onValueChange={(v) => setMode((v as FulfilmentMode | null) ?? "delivery")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="delivery">Delivery</SelectItem>
+                      {restaurant.supportsPickup && <SelectItem value="pickup">Pickup</SelectItem>}
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                <div className="grid gap-1">
-                  <Label className="text-xs">Payment Method</Label>
+                <div className="space-y-1">
+                  <Label>Payment</Label>
                   <Select
                     value={paymentMethod}
-                    onValueChange={(v) => { if (v !== null) setPaymentMethod(v as "upi" | "cod"); }}
+                    onValueChange={(v) => setPaymentMethod((v as PaymentMethod | null) ?? "upi")}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="upi">UPI</SelectItem>
-                      <SelectItem value="cod">Cash on Delivery</SelectItem>
+                      <SelectItem value="card">Card</SelectItem>
+                      {mode === "delivery" && <SelectItem value="cod">Cash on delivery</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
+              <Separator />
+
+              <div className="space-y-1">
+                {lines.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Add items from the menu.</p>
+                )}
+                {lines.map(([id, qty]) => {
+                  const item = menu.find((m) => m.id === id);
+                  if (!item) return null;
+                  return (
+                    <div key={id} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {qty}x {item.name}
+                      </span>
+                      <span className="tabular-nums">{rupees(item.price * qty)}</span>
+                    </div>
+                  );
+                })}
+                {lines.length > 0 && (
+                  <div className="flex justify-between border-t pt-1 text-sm font-semibold">
+                    <span>Subtotal</span>
+                    <span className="tabular-nums">{rupees(subtotal)}</span>
+                  </div>
+                )}
+              </div>
+
+              {lines.length > 0 && short > 0 && (
+                <Badge variant="secondary" className="bg-warn-soft text-warn">
+                  {rupees(short)} below this restaurant&apos;s minimum
+                </Badge>
+              )}
+
+              {error && <p className="rounded bg-bad-soft px-2 py-1.5 text-sm text-bad">{error}</p>}
+
               <Button
                 className="w-full"
-                disabled={cart.size === 0}
+                disabled={placing || lines.length === 0 || short > 0}
                 onClick={handlePlaceOrder}
               >
-                Place Test Order
+                {placing && <Loader2 className="size-4 animate-spin" />}
+                Place and pay test order
               </Button>
-            </Card>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

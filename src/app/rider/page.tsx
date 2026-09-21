@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import { useStore } from "@/data/use-store";
-import { OrderStatus, Order } from "@/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchRiders, transitionOrder } from "@/lib/api";
+import { isTerminal } from "@/lib/state-machine";
+import { useLiveOrders } from "@/lib/use-live-order";
+import { Order, OrderStatus, Rider } from "@/lib/types";
 import { RiderLogin } from "@/components/rider/rider-login";
 import { ActiveDelivery } from "@/components/rider/active-delivery";
 import { OrderList } from "@/components/rider/order-list";
@@ -10,77 +12,91 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
+/** An order still on a rider's plate — anything assigned and not finished. */
+function isLive(order: Order): boolean {
+  return !isTerminal(order.status) && order.status !== "created";
+}
+
 export default function RiderPage() {
-  const store = useStore();
+  const [riders, setRiders] = useState<Rider[]>([]);
   const [riderId, setRiderId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { orders, error, refresh } = useLiveOrders();
 
-  const riders = store.getRiders();
-  const rider = riderId ? store.getRider(riderId) : null;
+  useEffect(() => {
+    // Macrotask so the first fetch does not setState inside the effect body.
+    const timer = setTimeout(() => {
+      void fetchRiders()
+        .then(setRiders)
+        .catch(() => setRiders([]));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
-  // Get all orders for computations
-  const allOrders = store.getOrders();
+  const rider = riders.find((r) => r.id === riderId) ?? null;
 
-  // Active order for this rider
-  const activeOrder = useMemo(() => {
-    if (!rider?.currentOrderId) return null;
-    return store.getOrder(rider.currentOrderId) ?? null;
-  }, [rider?.currentOrderId, store, allOrders]);
+  const activeOrder = useMemo(
+    () => orders.find((o) => o.riderId === riderId && isLive(o)) ?? null,
+    [orders, riderId],
+  );
 
-  // Available Category B orders in "ready" status with no rider assigned
-  const availableOrders = useMemo(() => {
-    return allOrders.filter(
-      (o: Order) =>
-        o.category === "B" &&
-        o.status === "ready" &&
-        !o.riderId &&
-        o.orderType === "delivery"
-    );
-  }, [allOrders]);
+  // Category B jobs nobody has claimed yet.
+  const availableOrders = useMemo(
+    () =>
+      orders.filter(
+        (o) => o.category === "B" && o.mode === "delivery" && o.status === "ready" && !o.riderId,
+      ),
+    [orders],
+  );
 
-  // Completed orders by this rider
-  const completedOrders = useMemo(() => {
-    if (!riderId) return [];
-    return allOrders.filter(
-      (o: Order) => o.riderId === riderId && o.status === "delivered"
-    );
-  }, [allOrders, riderId]);
+  const completedOrders = useMemo(
+    () => orders.filter((o) => o.riderId === riderId && o.status === "delivered"),
+    [orders, riderId],
+  );
+
+  const busyRiderIds = useMemo(
+    () => orders.filter(isLive).flatMap((o) => (o.riderId ? [o.riderId] : [])),
+    [orders],
+  );
 
   const handleUpdateStatus = useCallback(
-    (orderId: string, newStatus: OrderStatus) => {
-      store.updateOrderStatus(orderId, newStatus);
-      // If delivered, free the rider
-      if (newStatus === "delivered" && riderId) {
-        store.freeRider(riderId);
+    async (orderId: string, newStatus: OrderStatus) => {
+      setActionError(null);
+      try {
+        await transitionOrder(orderId, { status: newStatus, actor: "rider" });
+        await refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Could not update the delivery");
       }
     },
-    [store, riderId]
+    [refresh],
   );
 
   const handleAcceptOrder = useCallback(
-    (orderId: string) => {
+    async (orderId: string) => {
       if (!riderId) return;
-      store.assignRider(orderId, riderId);
+      setActionError(null);
+      try {
+        // No status change — claiming a job only attaches the rider.
+        await transitionOrder(orderId, { assignRiderId: riderId, actor: "rider" });
+        await refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Could not accept the delivery");
+      }
     },
-    [store, riderId]
+    [riderId, refresh],
   );
 
-  const handleLogout = useCallback(() => {
-    setRiderId(null);
-  }, []);
-
-  // Login screen
   if (!riderId || !rider) {
     return (
       <div className="max-w-sm mx-auto">
-        <RiderLogin riders={riders} onSelect={setRiderId} />
+        <RiderLogin riders={riders} busyRiderIds={busyRiderIds} onSelect={setRiderId} />
       </div>
     );
   }
 
-  // Main rider dashboard
   return (
     <div className="max-w-sm mx-auto pb-8">
-      {/* Header */}
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -95,33 +111,28 @@ export default function RiderPage() {
           <div className="flex items-center gap-2">
             <Badge
               className={
-                rider.isAvailable
-                  ? "bg-emerald-100 text-emerald-700 text-[10px]"
-                  : "bg-orange-100 text-orange-700 text-[10px]"
+                activeOrder
+                  ? "bg-orange-100 text-orange-700 text-[10px]"
+                  : "bg-good-soft text-good text-[10px]"
               }
             >
-              {rider.isAvailable ? "Available" : "On Delivery"}
+              {activeOrder ? "On Delivery" : "Available"}
             </Badge>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <Button variant="ghost" size="sm" onClick={() => setRiderId(null)}>
               Logout
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Content */}
-      <div className="px-4 pt-4 space-y-6">
-        {/* Active Delivery */}
-        {activeOrder &&
-          activeOrder.status !== "delivered" && (
-            <ActiveDelivery
-              order={activeOrder}
-              onUpdateStatus={handleUpdateStatus}
-            />
-          )}
+      {(error || actionError) && (
+        <p className="bg-bad-soft px-4 py-2 text-sm text-bad">{actionError ?? error}</p>
+      )}
 
-        {/* No active delivery message */}
-        {!activeOrder && rider.isAvailable && (
+      <div className="px-4 pt-4 space-y-6">
+        {activeOrder && <ActiveDelivery order={activeOrder} onUpdateStatus={handleUpdateStatus} />}
+
+        {!activeOrder && (
           <div className="text-center py-6 space-y-2">
             <p className="text-3xl">&#x2705;</p>
             <p className="text-sm font-medium">You&apos;re available for deliveries</p>
@@ -133,7 +144,6 @@ export default function RiderPage() {
 
         <Separator />
 
-        {/* Order Lists */}
         <OrderList
           availableOrders={availableOrders}
           completedOrders={completedOrders}

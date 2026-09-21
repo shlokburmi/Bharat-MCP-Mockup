@@ -1,0 +1,235 @@
+/**
+ * SHARED CONTRACT — seed data. Real-ish Bangalore restaurants, a mix of
+ * Category A (own delivery) and Category B (partner rider).
+ * Prices are paise. Photos are emoji so the mock stays dependency-free.
+ */
+import type { MenuItem, Restaurant, Rider } from "./types";
+
+export const AREAS = [
+  "Indiranagar",
+  "Koramangala",
+  "HSR Layout",
+  "Jayanagar",
+  "Whitefield",
+  "Malleshwaram",
+  "JP Nagar",
+  "Bellandur",
+] as const;
+
+export const RESTAURANTS: Restaurant[] = [
+  {
+    id: "r_mtr",
+    name: "Mavalli Tiffin Rooms",
+    category: "A",
+    cuisines: ["South Indian", "Breakfast"],
+    area: "Lalbagh Road",
+    address: "14, Lalbagh Road, Mavalli, Bengaluru 560004",
+    phone: "+91 98450 11201",
+    rating: 4.6,
+    ratingCount: 18240,
+    prepTimeMins: 20,
+    deliveryFee: 2900,
+    minOrder: 15000,
+    deliversTo: ["Jayanagar", "JP Nagar", "Koramangala"],
+    supportsPickup: true,
+    emoji: "🥞",
+    live: true,
+  },
+  {
+    id: "r_meghana",
+    name: "Meghana Foods",
+    category: "B",
+    cuisines: ["Andhra", "Biryani"],
+    area: "Residency Road",
+    address: "37, Residency Road, Bengaluru 560025",
+    phone: "+91 98450 11202",
+    rating: 4.4,
+    ratingCount: 41820,
+    prepTimeMins: 28,
+    deliveryFee: 3900,
+    minOrder: 20000,
+    deliversTo: ["Koramangala", "Indiranagar", "HSR Layout", "Jayanagar"],
+    supportsPickup: true,
+    emoji: "🍛",
+    live: true,
+  },
+  {
+    id: "r_truffles",
+    name: "Truffles",
+    category: "B",
+    cuisines: ["American", "Burgers", "Continental"],
+    area: "Koramangala",
+    address: "28, 4th B Cross, Koramangala 5th Block, Bengaluru 560095",
+    phone: "+91 98450 11203",
+    rating: 4.5,
+    ratingCount: 33110,
+    prepTimeMins: 25,
+    deliveryFee: 3500,
+    minOrder: 18000,
+    deliversTo: ["Koramangala", "HSR Layout", "Indiranagar", "Bellandur"],
+    supportsPickup: false,
+    emoji: "🍔",
+    live: true,
+  },
+  {
+    id: "r_vidyarthi",
+    name: "Vidyarthi Bhavan",
+    category: "A",
+    cuisines: ["South Indian", "Breakfast"],
+    area: "Basavanagudi",
+    address: "32, Gandhi Bazaar Main Road, Basavanagudi, Bengaluru 560004",
+    phone: "+91 98450 11204",
+    rating: 4.7,
+    ratingCount: 22940,
+    prepTimeMins: 15,
+    deliveryFee: 2500,
+    minOrder: 10000,
+    deliversTo: ["Jayanagar", "JP Nagar"],
+    supportsPickup: true,
+    emoji: "☕",
+    live: true,
+  },
+  {
+    id: "r_nagarjuna",
+    name: "Nagarjuna",
+    category: "B",
+    cuisines: ["Andhra", "Biryani", "Seafood"],
+    area: "Indiranagar",
+    address: "100 Feet Road, Indiranagar, Bengaluru 560038",
+    phone: "+91 98450 11205",
+    rating: 4.3,
+    ratingCount: 15670,
+    prepTimeMins: 30,
+    deliveryFee: 4200,
+    minOrder: 25000,
+    deliversTo: ["Indiranagar", "Whitefield", "Bellandur", "Koramangala"],
+    supportsPickup: true,
+    emoji: "🌶️",
+    live: true,
+  },
+  {
+    id: "r_corner",
+    name: "Corner House Ice Cream",
+    category: "A",
+    cuisines: ["Desserts", "Ice Cream"],
+    area: "Jayanagar",
+    address: "9th Block, Jayanagar, Bengaluru 560069",
+    phone: "+91 98450 11206",
+    rating: 4.6,
+    ratingCount: 28450,
+    prepTimeMins: 12,
+    deliveryFee: 2900,
+    minOrder: 12000,
+    deliversTo: ["Jayanagar", "JP Nagar", "Koramangala", "HSR Layout"],
+    supportsPickup: true,
+    emoji: "🍨",
+    live: true,
+  },
+  {
+    id: "r_empire",
+    name: "Empire Restaurant",
+    category: "B",
+    cuisines: ["Mughlai", "Kebabs", "Biryani"],
+    area: "HSR Layout",
+    address: "27th Main, Sector 1, HSR Layout, Bengaluru 560102",
+    phone: "+91 98450 11207",
+    rating: 4.2,
+    ratingCount: 52300,
+    prepTimeMins: 22,
+    deliveryFee: 3200,
+    minOrder: 15000,
+    deliversTo: ["HSR Layout", "Koramangala", "Bellandur", "JP Nagar"],
+    supportsPickup: true,
+    emoji: "🍗",
+    live: true,
+  },
+  {
+    id: "r_cta",
+    name: "CTR — Central Tiffin Room",
+    category: "A",
+    cuisines: ["South Indian", "Breakfast"],
+    area: "Malleshwaram",
+    address: "7th Cross, Margosa Road, Malleshwaram, Bengaluru 560003",
+    phone: "+91 98450 11208",
+    rating: 4.7,
+    ratingCount: 19880,
+    prepTimeMins: 18,
+    deliveryFee: 3000,
+    minOrder: 12000,
+    deliversTo: ["Malleshwaram", "Jayanagar"],
+    supportsPickup: true,
+    emoji: "🧈",
+    live: true,
+  },
+];
+
+type SeedItem = Omit<MenuItem, "id" | "restaurantId">;
+
+function items(restaurantId: string, list: SeedItem[]): MenuItem[] {
+  return list.map((it, i) => ({
+    ...it,
+    id: `${restaurantId}_m${i + 1}`,
+    restaurantId,
+  }));
+}
+
+export const MENU: MenuItem[] = [
+  ...items("r_mtr", [
+    { name: "Rava Idli", description: "The original, two pieces with saagu and chutney", price: 14000, veg: true, section: "Tiffin", tags: ["idli", "breakfast", "south indian"], emoji: "🍚", available: true, rating: 4.8 },
+    { name: "Masala Dosa", description: "Crisp dosa, potato palya, ghee roasted", price: 16000, veg: true, section: "Tiffin", tags: ["dosa", "breakfast"], emoji: "🥞", available: true, rating: 4.7 },
+    { name: "Bisi Bele Bath", description: "Rice, lentils and MTR's own masala, with khara boondi", price: 18000, veg: true, section: "Rice", tags: ["rice", "karnataka"], emoji: "🍲", available: true, rating: 4.6 },
+    { name: "Filter Coffee", description: "Decoction and milk, served in a tumbler", price: 6000, veg: true, section: "Beverages", tags: ["coffee"], emoji: "☕", available: true, rating: 4.9 },
+  ]),
+  ...items("r_meghana", [
+    { name: "Chicken Boneless Biryani", description: "Andhra style, long grain rice, raita and salan", price: 38000, veg: false, section: "Biryani", tags: ["biryani", "chicken", "andhra"], emoji: "🍛", available: true, rating: 4.6, spicy: true },
+    { name: "Mutton Biryani", description: "Slow cooked mutton, seeraga samba rice", price: 46000, veg: false, section: "Biryani", tags: ["biryani", "mutton"], emoji: "🍖", available: true, rating: 4.5, spicy: true },
+    { name: "Paneer Biryani", description: "Malai paneer cubes, mild spice", price: 32000, veg: true, section: "Biryani", tags: ["biryani", "paneer", "veg"], emoji: "🧀", available: true, rating: 4.2 },
+    { name: "Apollo Fish", description: "Boneless fish tossed with curry leaf and chilli", price: 39000, veg: false, section: "Starters", tags: ["fish", "starter"], emoji: "🐟", available: true, rating: 4.4, spicy: true },
+  ]),
+  ...items("r_truffles", [
+    { name: "Ultimate Chicken Burger", description: "Double patty, cheese, jalapeno, house sauce", price: 39900, veg: false, section: "Burgers", tags: ["burger", "chicken"], emoji: "🍔", available: true, rating: 4.7 },
+    { name: "Veg Cheese Burger", description: "Crumb-fried patty, cheddar, lettuce", price: 29900, veg: true, section: "Burgers", tags: ["burger", "veg"], emoji: "🍔", available: true, rating: 4.3 },
+    { name: "Peri Peri Fries", description: "Thick cut, tossed in peri peri", price: 19900, veg: true, section: "Sides", tags: ["fries", "sides"], emoji: "🍟", available: true, rating: 4.5 },
+    { name: "Death by Chocolate", description: "Brownie, ice cream, hot fudge", price: 27900, veg: true, section: "Desserts", tags: ["dessert", "chocolate"], emoji: "🍫", available: false, rating: 4.8 },
+  ]),
+  ...items("r_vidyarthi", [
+    { name: "Benne Masala Dosa", description: "Butter-drenched, the one people queue for", price: 11000, veg: true, section: "Tiffin", tags: ["dosa", "butter", "breakfast"], emoji: "🥞", available: true, rating: 4.9 },
+    { name: "Idli Vada", description: "Two idlis, one vada, sambar and chutney", price: 9000, veg: true, section: "Tiffin", tags: ["idli", "vada", "breakfast"], emoji: "🍩", available: true, rating: 4.6 },
+    { name: "Kesari Bath", description: "Ghee, saffron, semolina", price: 7000, veg: true, section: "Sweets", tags: ["sweet", "breakfast"], emoji: "🍮", available: true, rating: 4.5 },
+  ]),
+  ...items("r_nagarjuna", [
+    { name: "Andhra Meals (Non-Veg)", description: "Unlimited rice, chicken curry, rasam, curd", price: 42000, veg: false, section: "Meals", tags: ["meals", "andhra", "thali"], emoji: "🍽️", available: true, rating: 4.5, spicy: true },
+    { name: "Chicken Biryani", description: "Hyderabadi style dum biryani", price: 40000, veg: false, section: "Biryani", tags: ["biryani", "chicken"], emoji: "🍛", available: true, rating: 4.4, spicy: true },
+    { name: "Gongura Mutton", description: "Sorrel leaves, slow-cooked mutton", price: 48000, veg: false, section: "Curries", tags: ["mutton", "andhra"], emoji: "🥘", available: true, rating: 4.6, spicy: true },
+    { name: "Veg Meals", description: "Rice, three curries, sambar, rasam, curd", price: 28000, veg: true, section: "Meals", tags: ["meals", "veg", "thali"], emoji: "🍚", available: true, rating: 4.2 },
+  ]),
+  ...items("r_corner", [
+    { name: "Death by Chocolate", description: "The Bangalore classic — brownie, ice cream, nuts", price: 28000, veg: true, section: "Sundaes", tags: ["dessert", "chocolate", "ice cream"], emoji: "🍨", available: true, rating: 4.8 },
+    { name: "Hot Chocolate Fudge", description: "Vanilla scoops under warm fudge", price: 26000, veg: true, section: "Sundaes", tags: ["dessert", "ice cream"], emoji: "🍦", available: true, rating: 4.7 },
+    { name: "Butterscotch Tub (500ml)", description: "Take-home tub", price: 34000, veg: true, section: "Tubs", tags: ["ice cream", "tub"], emoji: "🍧", available: true, rating: 4.5 },
+  ]),
+  ...items("r_empire", [
+    { name: "Chicken Kebab Roll", description: "Tandoori chicken, onions, mint chutney in rumali", price: 21000, veg: false, section: "Rolls", tags: ["roll", "kebab", "chicken"], emoji: "🌯", available: true, rating: 4.3 },
+    { name: "Empire Special Chicken Biryani", description: "Family favourite, generous portions", price: 34000, veg: false, section: "Biryani", tags: ["biryani", "chicken"], emoji: "🍛", available: true, rating: 4.2 },
+    { name: "Butter Chicken", description: "Rich tomato gravy, served with rumali roti", price: 36000, veg: false, section: "Curries", tags: ["chicken", "mughlai"], emoji: "🍗", available: true, rating: 4.4 },
+    { name: "Paneer Tikka Masala", description: "Charred paneer in a smoky gravy", price: 30000, veg: true, section: "Curries", tags: ["paneer", "veg"], emoji: "🧀", available: true, rating: 4.1 },
+  ]),
+  ...items("r_cta", [
+    { name: "Benne Masale Dose", description: "Dripping with butter, served with chutney", price: 12000, veg: true, section: "Tiffin", tags: ["dosa", "butter", "breakfast"], emoji: "🧈", available: true, rating: 4.9 },
+    { name: "Khali Dose", description: "Plain butter dosa, no filling", price: 9000, veg: true, section: "Tiffin", tags: ["dosa", "breakfast"], emoji: "🥞", available: true, rating: 4.6 },
+    { name: "Mangalore Bajji", description: "Fluffy, with coconut chutney", price: 8000, veg: true, section: "Snacks", tags: ["snack", "bajji"], emoji: "🧆", available: true, rating: 4.5 },
+  ]),
+];
+
+export const RIDERS: Rider[] = [
+  { id: "rider_1", name: "Suresh K", phone: "+91 90080 33101", vehicle: "bike", zone: ["Koramangala", "HSR Layout", "Bellandur"], online: true },
+  { id: "rider_2", name: "Imran S", phone: "+91 90080 33102", vehicle: "scooter", zone: ["Indiranagar", "Whitefield"], online: true },
+  { id: "rider_3", name: "Lakshmi R", phone: "+91 90080 33103", vehicle: "scooter", zone: ["Jayanagar", "JP Nagar", "Malleshwaram"], online: true },
+];
+
+/** Fee model for the mockup. All paise. */
+export const FEES = {
+  /** 5% GST, applied to the food subtotal */
+  taxRate: 0.05,
+  platformFee: 500,
+};

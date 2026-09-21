@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Restaurant } from "@/types";
+import { Restaurant } from "@/lib/types";
 import { LoginScreen } from "@/components/restaurant/login-screen";
 import { OrderInbox } from "@/components/restaurant/order-inbox";
 

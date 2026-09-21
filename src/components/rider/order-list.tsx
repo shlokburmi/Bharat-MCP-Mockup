@@ -1,6 +1,6 @@
 "use client";
 
-import { Order } from "@/types";
+import { Order } from "@/lib/types";
 import { DeliveryCard } from "./delivery-card";
 import { Separator } from "@/components/ui/separator";
 
@@ -10,14 +10,9 @@ interface OrderListProps {
   onAcceptOrder: (orderId: string) => void;
 }
 
-export function OrderList({
-  availableOrders,
-  completedOrders,
-  onAcceptOrder,
-}: OrderListProps) {
+export function OrderList({ availableOrders, completedOrders, onAcceptOrder }: OrderListProps) {
   return (
     <div className="space-y-6">
-      {/* Available Orders Section */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Available Orders</h2>
@@ -31,8 +26,10 @@ export function OrderList({
         {availableOrders.length === 0 ? (
           <div className="text-center py-8 text-sm text-muted-foreground">
             <p className="text-2xl mb-2">&#x1F4ED;</p>
-            <p>No available orders right now</p>
-            <p className="text-xs mt-1">New orders will appear here when ready</p>
+            <p>No unclaimed orders right now</p>
+            <p className="text-xs mt-1">
+              Category B orders appear here once the restaurant marks them ready
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -50,7 +47,6 @@ export function OrderList({
 
       <Separator />
 
-      {/* Completed Orders Section */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Completed Today</h2>

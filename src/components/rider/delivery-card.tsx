@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Order, STATUS_LABELS, STATUS_COLORS } from "@/types";
+import { Order } from "@/lib/types";
+import { OPERATOR_STATUS_COPY } from "@/lib/state-machine";
+import { STATUS_PILL } from "@/lib/operator-actions";
+import { rupees } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,9 +25,7 @@ export function DeliveryCard({
   actionVariant = "default",
 }: DeliveryCardProps) {
   const [expanded, setExpanded] = useState(false);
-
-  const itemCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
-  const customerArea = order.customerAddress.split(",").slice(-2).join(",").trim();
+  const itemCount = order.items.reduce((sum, i) => sum + i.qty, 0);
 
   return (
     <Card
@@ -36,11 +37,11 @@ export function DeliveryCard({
           <div className="min-w-0">
             <CardTitle className="truncate">{order.restaurantName}</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {customerArea}
+              {order.customer.area} · {order.code}
             </p>
           </div>
-          <Badge className={cn("shrink-0 text-[10px]", STATUS_COLORS[order.status])}>
-            {STATUS_LABELS[order.status]}
+          <Badge className={cn("shrink-0 text-[10px]", STATUS_PILL[order.status])}>
+            {OPERATOR_STATUS_COPY[order.status]}
           </Badge>
         </div>
       </CardHeader>
@@ -50,9 +51,7 @@ export function DeliveryCard({
           <span className="text-muted-foreground">
             {itemCount} item{itemCount !== 1 ? "s" : ""}
           </span>
-          <span className="font-semibold">
-            &#8377;{order.totalAmount.toLocaleString("en-IN")}
-          </span>
+          <span className="font-semibold tabular-nums">{rupees(order.totals.total)}</span>
         </div>
 
         {expanded && (
@@ -63,13 +62,13 @@ export function DeliveryCard({
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Items
               </p>
-              {order.items.map((item, idx) => (
-                <div key={idx} className="flex justify-between text-sm">
+              {order.items.map((item) => (
+                <div key={item.menuItemId} className="flex justify-between text-sm">
                   <span>
-                    {item.quantity}x {item.name}
+                    {item.qty}x {item.name}
                   </span>
-                  <span className="text-muted-foreground">
-                    &#8377;{(item.quantity * item.price).toLocaleString("en-IN")}
+                  <span className="text-muted-foreground tabular-nums">
+                    {rupees(item.qty * item.price)}
                   </span>
                 </div>
               ))}
@@ -81,8 +80,16 @@ export function DeliveryCard({
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Customer
               </p>
-              <p className="font-medium">{order.customerName}</p>
-              <p className="text-muted-foreground text-xs">{order.customerAddress}</p>
+              <p className="font-medium">{order.customer.name}</p>
+              <p className="text-muted-foreground text-xs">
+                {order.customer.address}, {order.customer.area}
+              </p>
+              <a
+                href={`tel:${order.customer.phone.replace(/\s/g, "")}`}
+                className="text-xs font-medium text-brand"
+              >
+                {order.customer.phone}
+              </a>
             </div>
 
             <div className="space-y-1 text-sm">
@@ -90,7 +97,9 @@ export function DeliveryCard({
                 Payment
               </p>
               <p>
-                {order.paymentMethod === "cod" ? "Cash on Delivery" : "UPI (Paid)"}
+                {order.paymentMethod === "cod"
+                  ? `Cash on delivery — collect ${rupees(order.totals.total)}`
+                  : `${order.paymentMethod?.toUpperCase() ?? "Prepaid"} (paid)`}
               </p>
             </div>
 
