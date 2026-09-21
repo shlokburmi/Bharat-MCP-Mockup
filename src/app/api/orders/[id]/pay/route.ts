@@ -11,8 +11,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const body = (await req.json()) as {
       method: PaymentMethod;
       outcome?: "success" | "failure";
+      /** instrument the sheet charged, e.g. "HDFC Credit Card •••• 4242" */
+      detail?: string;
     };
-    const order = payOrder(id, body.method, body.outcome ?? "success");
+    const order = payOrder(id, body.method, body.outcome ?? "success", body.detail);
 
     // Category B orders get a partner rider attached up front so the rider
     // console sees the job as soon as the restaurant accepts.

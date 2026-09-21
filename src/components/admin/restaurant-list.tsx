@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -26,7 +34,10 @@ import type { CoverageReport } from "@/lib/store-input";
 import { useRestaurants } from "@/lib/use-restaurants";
 import { OnboardingForm } from "./onboarding-form";
 import { MenuBuilder } from "./menu-builder";
-import { Plus, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, CheckCircle2, XCircle, Pause, Play, Settings2, Search } from "lucide-react";
+
+type StatusFilter = "all" | "live" | "dark";
+type CategoryFilter = "all" | "A" | "B";
 
 export function RestaurantList() {
   const { restaurants, loading, error, refresh } = useRestaurants();
@@ -36,6 +47,31 @@ export function RestaurantList() {
     null,
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  /** id of the row with a request in flight, so its buttons can't be double-fired */
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [areaFilter, setAreaFilter] = useState("all");
+
+  const areas = useMemo(
+    () => [...new Set(restaurants.map((r) => r.area))].sort((a, b) => a.localeCompare(b)),
+    [restaurants],
+  );
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return restaurants.filter((r) => {
+      if (statusFilter === "live" && !r.live) return false;
+      if (statusFilter === "dark" && r.live) return false;
+      if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
+      if (areaFilter !== "all" && r.area !== areaFilter) return false;
+      if (!q) return true;
+      return `${r.name} ${r.area} ${r.cuisines.join(" ")} ${r.phone}`.toLowerCase().includes(q);
+    });
+  }, [restaurants, query, statusFilter, categoryFilter, areaFilter]);
+
+  const filtered = visible.length !== restaurants.length;
 
   const detail = restaurants.find((r) => r.id === selectedId) ?? null;
 
@@ -57,21 +93,33 @@ export function RestaurantList() {
 
   async function handleToggleLive(id: string, next: boolean) {
     setActionError(null);
+    setBusyId(id);
     try {
       await updateRestaurant(id, { live: next });
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not update the restaurant");
+      const name = restaurants.find((r) => r.id === id)?.name ?? "This restaurant";
+      setActionError(
+        `${name}: ${err instanceof Error ? err.message : "could not be updated"}`,
+      );
+    } finally {
+      setBusyId(null);
     }
   }
 
   async function handleToggleCategory(id: string, next: "A" | "B") {
     setActionError(null);
+    setBusyId(id);
     try {
       await updateRestaurant(id, { category: next });
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not change the category");
+      const name = restaurants.find((r) => r.id === id)?.name ?? "This restaurant";
+      setActionError(
+        `${name}: ${err instanceof Error ? err.message : "could not change category"}`,
+      );
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -81,13 +129,71 @@ export function RestaurantList() {
         <div>
           <h2 className="text-lg font-semibold">Restaurants</h2>
           <p className="text-sm text-muted-foreground">
-            {loading ? "Loading…" : `${restaurants.length} onboarded · ${restaurants.filter((r) => r.live).length} live`}
+            {loading
+              ? "Loading…"
+              : filtered
+                ? `${visible.length} of ${restaurants.length} shown · ${visible.filter((r) => r.live).length} live`
+                : `${restaurants.length} onboarded · ${restaurants.filter((r) => r.live).length} live`}
           </p>
         </div>
         <Button onClick={() => setShowOnboarding(true)}>
           <Plus className="size-4" />
           Add Restaurant
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-56 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, area, cuisine or number"
+            className="pl-8"
+          />
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg bg-canvas p-0.5">
+          {(["all", "live", "dark"] as StatusFilter[]).map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant={statusFilter === s ? "secondary" : "ghost"}
+              className="h-7 px-2.5 text-xs capitalize"
+              onClick={() => setStatusFilter(s)}
+            >
+              {s}
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg bg-canvas p-0.5">
+          {(["all", "A", "B"] as CategoryFilter[]).map((c) => (
+            <Button
+              key={c}
+              size="sm"
+              variant={categoryFilter === c ? "secondary" : "ghost"}
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setCategoryFilter(c)}
+            >
+              {c === "all" ? "All" : `Cat ${c}`}
+            </Button>
+          ))}
+        </div>
+
+        <Select value={areaFilter} onValueChange={(v) => setAreaFilter((v as string | null) ?? "all")}>
+          <SelectTrigger size="sm" className="min-w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All areas</SelectItem>
+            {areas.map((a) => (
+              <SelectItem key={a} value={a}>
+                {a}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {(error || actionError) && (
@@ -104,26 +210,41 @@ export function RestaurantList() {
             <TableHead>Status</TableHead>
             <TableHead>WhatsApp</TableHead>
             <TableHead>Min order</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {restaurants.map((r) => (
+          {visible.map((r) => (
             <TableRow key={r.id} className="cursor-pointer" onClick={() => setSelectedId(r.id)}>
               <TableCell className="font-medium">
                 {r.emoji} {r.name}
               </TableCell>
               <TableCell className="text-muted-foreground">{r.area}</TableCell>
-              <TableCell>
-                <Badge
-                  variant="secondary"
-                  className={
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                {/* The badge is the control — clicking it flips the category,
+                    which keeps the row narrow enough for the action buttons. */}
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  title={
                     r.category === "A"
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-purple-100 text-purple-700"
+                      ? "Delivers itself — switch to a partner rider"
+                      : "Partner rider delivers — switch to own delivery"
                   }
+                  onClick={() => handleToggleCategory(r.id, r.category === "A" ? "B" : "A")}
+                  className="disabled:opacity-50"
                 >
-                  Cat {r.category}
-                </Badge>
+                  <Badge
+                    variant="secondary"
+                    className={`cursor-pointer ${
+                      r.category === "A"
+                        ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                    }`}
+                  >
+                    Cat {r.category} ⇄
+                  </Badge>
+                </button>
               </TableCell>
               <TableCell>
                 <span className="text-muted-foreground">
@@ -145,6 +266,38 @@ export function RestaurantList() {
               <TableCell className="text-muted-foreground tabular-nums">
                 {rupees(r.minOrder)}
               </TableCell>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyId === r.id}
+                    className="h-7 px-2 text-xs"
+                    onClick={() => handleToggleLive(r.id, !r.live)}
+                  >
+                    {r.live ? (
+                      <>
+                        <Pause className="size-3" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="size-3" />
+                        Go live
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setSelectedId(r.id)}
+                  >
+                    <Settings2 className="size-3" />
+                    Manage
+                  </Button>
+                </div>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -154,6 +307,25 @@ export function RestaurantList() {
         <p className="py-10 text-center text-sm text-muted-foreground">
           No restaurants yet. Onboard one to get started.
         </p>
+      )}
+
+      {!loading && restaurants.length > 0 && visible.length === 0 && (
+        <div className="py-10 text-center">
+          <p className="text-sm text-muted-foreground">No restaurant matches these filters.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => {
+              setQuery("");
+              setStatusFilter("all");
+              setCategoryFilter("all");
+              setAreaFilter("all");
+            }}
+          >
+            Clear filters
+          </Button>
+        </div>
       )}
 
       <OnboardingForm

@@ -34,6 +34,14 @@ const SURFACES = [
     emoji: "🎛️",
     big: false,
   },
+  {
+    href: "/sms",
+    title: "SMS tracker",
+    who: "Customer",
+    detail: "The texts a customer gets — payment link, then every stage until delivered.",
+    emoji: "💬",
+    big: false,
+  },
 ];
 
 const INTRO_STRIP = [
@@ -214,10 +222,10 @@ export default function Home() {
       {/* ------------------------------------------------------ surfaces bento */}
       <section className="mx-auto w-full max-w-5xl px-5 pb-20 sm:px-8">
         <div className="mb-8 text-center">
-          <h2 className="text-2xl font-semibold text-ink sm:text-3xl">Five surfaces, one order</h2>
+          <h2 className="text-2xl font-semibold text-ink sm:text-3xl">Every surface, one order</h2>
           <p className="mx-auto mt-2 max-w-md text-[15px] text-ink-soft">
-            Every screen reads the same in-memory store, so an order paid in one tab shows up in
-            the others within a couple of seconds.
+            Every screen reads the same store, so an order paid in one tab shows up in the others
+            within a couple of seconds.
           </p>
         </div>
 
@@ -260,8 +268,8 @@ export default function Home() {
         </div>
 
         <p className="mt-8 text-center text-xs text-ink-faint">
-          No real payments, restaurants or riders are involved. Orders live in the server process
-          and reset when it restarts, or from the ops console.
+          No real payments, restaurants or riders are involved. Orders live in the server process,
+          backed up in this browser so a link survives a restart, and reset from the ops console.
         </p>
       </section>
     </main>

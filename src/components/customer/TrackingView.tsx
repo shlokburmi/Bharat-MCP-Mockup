@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, cx } from "@/components/ui/kit";
 import { BillBreakdown, DeliveryDetails, ItemsList, PoweredByStrip } from "./OrderBits";
+import { SmsTracker } from "./SmsTracker";
 import { rupees, timeOfDay } from "@/lib/format";
 import { CUSTOMER_STATUS_COPY, happyPath, isTerminal } from "@/lib/state-machine";
 import { useNow } from "@/lib/use-live-order";
@@ -190,7 +191,7 @@ export function TrackingView({ order, live }: { order: Order; live: boolean }) {
               <p className="mt-3 text-xs text-ink-faint">
                 {order.paymentMethod === "cod"
                   ? "Cash on delivery"
-                  : `Paid via ${order.paymentMethod.toUpperCase()}`}
+                  : `Paid via ${order.paymentDetail ?? order.paymentMethod.toUpperCase()}`}
                 {order.paymentId && ` · ${order.paymentId}`}
               </p>
             )}
@@ -199,6 +200,7 @@ export function TrackingView({ order, live }: { order: Order; live: boolean }) {
       </Card>
 
       <DeliveryDetails order={order} />
+      <SmsTracker order={order} />
 
       {settled && (
         <Button variant="secondary" className="w-full" onClick={() => router.push("/chat")}>

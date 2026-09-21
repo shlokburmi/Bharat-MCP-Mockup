@@ -12,6 +12,7 @@ npm run dev     # http://localhost:3000
 | --- | --- | --- |
 | Assistant chat simulator | `/chat` | Customer — search, pick a dish, get a link |
 | Dynamic order link | `/order/[id]` | Customer — summary → payment → live tracking |
+| SMS tracker | `/sms` | Customer — the texts sent to their phone, live |
 | Restaurant interface | `/restaurant` | Owner — inbox, accept/reject, preparing/ready |
 | Delivery partner | `/rider` | Partner rider — picked up, delivered |
 | Ops console | `/admin` | Internal — onboarding, menu builder, Cat A/B, test orders |
@@ -26,20 +27,24 @@ Open three tabs side by side: `/chat`, `/restaurant`, `/rider`.
 1. **`/chat`** — ask for *"best biryani near Koramangala"*. Five restaurants come back from
    what looks like an MCP tool call. Add a dish, adjust quantities, confirm the address,
    generate the payment link.
-2. **`/order/[id]`** — the bill and a 30-minute countdown. Pay by UPI, card or cash. Tick
-   *simulate a declined payment* first if you want to show the failure path.
+2. **`/order/[id]`** — the bill and a 30-minute countdown. Pay by UPI (app, VPA or QR), saved
+   or new card, netbanking, wallet or cash. Tick *simulate a declined payment* first if you
+   want to show the failure path. Every stage is also texted — open **SMS updates** on the
+   page, or `/sms` for the customer's whole inbox.
 3. **`/restaurant`** — sign in with `9845011202` (Meghana Foods). The order is already in
    the inbox, with the WhatsApp message the owner would have received. Accept it, start
-   preparing, mark it ready. Watch the customer tab update without a refresh.
+   preparing, mark it ready. Watch the customer tab update without a refresh. **History**
+   keeps every finished order, with the day's count and takings.
 4. **`/rider`** — pick a rider. Meghana is Category B, so a partner rider has the job:
    mark it picked up, then out for delivery, then delivered.
 5. Run it again with Mavalli Tiffin Rooms (`9845011201`). That one is **Category A**, so the
    restaurant drives the delivery leg itself and no rider is involved — and the customer's
    tracking screen looks exactly the same. That is the point.
 
-**Ops console** (`/admin`): onboard a restaurant, scan a menu photo into structured items,
-flip Category A/B, check partner coverage, and place a test order that lands in the
-restaurant inbox like a real one. The **Reset demo** button on the Orders tab wipes
+**Ops console** (`/admin`): search and filter the 70-odd seeded restaurants, flip any row
+between Category A and B or pause it live from the table, onboard a new one, scan a menu
+photo into structured items, check partner coverage, and place a test order that lands in
+the restaurant inbox like a real one. The **Reset demo** button on the Orders tab wipes
 everything back to seed.
 
 Working alone? **Demo controls** at the bottom of the order page advances an order one
@@ -62,7 +67,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · shadcn/ui.
 State lives in the **server process**, behind route handlers under `/api`, and clients
 poll it. That is why three tabs on one laptop stay consistent, and why swapping the mock
 for a real backend means replacing `src/lib/store.ts` rather than rewriting screens.
-Nothing is persisted — restarting the dev server clears every order.
+
+Deployed serverless, each request can land on a freshly-booted instance whose store is
+empty — which used to 404 a payment link seconds after it was generated. So the browser
+keeps a copy of every order it has seen (`src/lib/order-cache.ts`) and any read that comes
+back short pushes it back to the server before retrying. localStorage is shared across
+tabs, so the restaurant tab restores the customer's order just as well as the customer's.
+**Reset demo** clears both sides.
 
 The operator surfaces use the shadcn primitives in `src/components/ui`; the customer
 surfaces use the small hand-rolled kit in `src/components/ui/kit.tsx`. Both are driven by

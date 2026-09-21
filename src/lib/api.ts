@@ -18,6 +18,7 @@ import type {
   CreateRestaurantInput,
   NewMenuItem,
 } from "./store-input";
+import { cachedOrder, cachedOrders, clearOrderCache, rememberOrders } from "./order-cache";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -56,6 +57,36 @@ export async function fetchRestaurant(
   return json(await fetch(`/api/restaurants/${id}`, { cache: "no-store" }));
 }
 
+/**
+ * Pushes the browser's cached orders back into whichever server instance
+ * answered. Deployed serverless, the store a request lands on may never have
+ * seen the order being asked about — see `order-cache.ts`.
+ */
+async function hydrateServer(): Promise<boolean> {
+  const orders = cachedOrders();
+  if (!orders.length) return false;
+  const res = await fetch("/api/demo/hydrate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ orders }),
+  });
+  if (!res.ok) return false;
+  const { restored } = (await res.json()) as { restored: number };
+  return restored > 0;
+}
+
+/** Runs `attempt`, and on a 404 restores the local order cache and tries once
+ *  more before giving up. */
+async function withRecovery<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 404) throw err;
+    if (!(await hydrateServer())) throw err;
+    return attempt();
+  }
+}
+
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const data = await json<{ order: Order }>(
     await fetch("/api/orders", {
@@ -64,40 +95,87 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
       body: JSON.stringify(input),
     }),
   );
+  rememberOrders([data.order]);
   return data.order;
 }
 
 export async function fetchOrder(id: string): Promise<Order> {
-  const data = await json<{ order: Order }>(await fetch(`/api/orders/${id}`, { cache: "no-store" }));
-  return data.order;
+  try {
+    const order = await withRecovery(async () => {
+      const data = await json<{ order: Order }>(
+        await fetch(`/api/orders/${id}`, { cache: "no-store" }),
+      );
+      return data.order;
+    });
+    rememberOrders([order]);
+    return order;
+  } catch (err) {
+    // Last resort: show the customer the copy this browser is holding rather
+    // than a dead link. Any action they take re-hydrates the server first.
+    const fallback = cachedOrder(id);
+    if (fallback) return fallback;
+    throw err;
+  }
 }
 
 export async function fetchOrders(
-  opts: { restaurantId?: string; riderId?: string; active?: boolean } = {},
+  opts: { restaurantId?: string; riderId?: string; phone?: string; active?: boolean } = {},
 ): Promise<Order[]> {
   const params = new URLSearchParams();
   if (opts.restaurantId) params.set("restaurantId", opts.restaurantId);
   if (opts.riderId) params.set("riderId", opts.riderId);
+  if (opts.phone) params.set("phone", opts.phone);
   if (opts.active) params.set("active", "1");
-  const data = await json<{ orders: Order[] }>(
-    await fetch(`/api/orders?${params}`, { cache: "no-store" }),
-  );
-  return data.orders;
+
+  const load = async () => {
+    const data = await json<{ orders: Order[] }>(
+      await fetch(`/api/orders?${params}`, { cache: "no-store" }),
+    );
+    return data.orders;
+  };
+
+  let orders = await load();
+  // A list can't 404, it just comes back short — so compare against what this
+  // browser knows should be in it before trusting an empty inbox.
+  if (missingFromCache(orders, opts) && (await hydrateServer())) orders = await load();
+  rememberOrders(orders);
+  return orders;
+}
+
+const last10 = (phone: string) => phone.replace(/\D/g, "").slice(-10);
+
+function missingFromCache(
+  orders: Order[],
+  opts: { restaurantId?: string; riderId?: string; phone?: string },
+): boolean {
+  const seen = new Set(orders.map((o) => o.id));
+  return cachedOrders().some((o) => {
+    if (seen.has(o.id)) return false;
+    if (opts.restaurantId && o.restaurantId !== opts.restaurantId) return false;
+    if (opts.riderId && o.riderId !== opts.riderId) return false;
+    if (opts.phone && last10(o.customer.phone) !== last10(opts.phone)) return false;
+    return true;
+  });
 }
 
 export async function payOrder(
   id: string,
   method: PaymentMethod,
   outcome: "success" | "failure" = "success",
+  detail?: string,
 ): Promise<Order> {
-  const data = await json<{ order: Order }>(
-    await fetch(`/api/orders/${id}/pay`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ method, outcome }),
-    }),
-  );
-  return data.order;
+  const order = await withRecovery(async () => {
+    const data = await json<{ order: Order }>(
+      await fetch(`/api/orders/${id}/pay`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ method, outcome, detail }),
+      }),
+    );
+    return data.order;
+  });
+  rememberOrders([order]);
+  return order;
 }
 
 export interface TransitionInput {
@@ -111,29 +189,40 @@ export interface TransitionInput {
 }
 
 export async function transitionOrder(id: string, input: TransitionInput): Promise<Order> {
-  const data = await json<{ order: Order }>(
-    await fetch(`/api/orders/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-  );
-  return data.order;
+  const order = await withRecovery(async () => {
+    const data = await json<{ order: Order }>(
+      await fetch(`/api/orders/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    );
+    return data.order;
+  });
+  rememberOrders([order]);
+  return order;
 }
 
 /** Demo helper — pushes an order one step along its happy path. */
 export async function advanceOrder(orderId: string): Promise<Order> {
-  const data = await json<{ order: Order }>(
-    await fetch("/api/demo/advance", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ orderId }),
-    }),
-  );
-  return data.order;
+  const order = await withRecovery(async () => {
+    const data = await json<{ order: Order }>(
+      await fetch("/api/demo/advance", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      }),
+    );
+    return data.order;
+  });
+  rememberOrders([order]);
+  return order;
 }
 
 export async function resetDemo(): Promise<void> {
+  // Clear the browser copy too, or the next poll would hydrate every order
+  // straight back into the store it just wiped.
+  clearOrderCache();
   await json(await fetch("/api/demo/reset", { method: "POST" }));
 }
 
@@ -241,6 +330,7 @@ export async function runTestOrder(
       body: JSON.stringify({ restaurantId, mode }),
     }),
   );
+  rememberOrders([data.order]);
   return data.order;
 }
 

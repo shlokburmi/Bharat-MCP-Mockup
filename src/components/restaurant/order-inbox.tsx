@@ -18,19 +18,20 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { OrderCard } from "./order-card";
 import { OrderDetail } from "./order-detail";
+import { OrderHistory } from "./order-history";
 
 interface OrderInboxProps {
   restaurant: Restaurant;
   onLogout: () => void;
 }
 
-type TabKey = "new" | "active" | "completed" | "rejected";
+type TabKey = "new" | "active" | "history";
 
 const TAB_STATUS_MAP: Record<TabKey, OrderStatus[]> = {
   new: ["paid", "sent_to_restaurant"],
   active: ["accepted", "preparing", "ready", "picked_up", "out_for_delivery"],
-  completed: ["delivered", "collected"],
-  rejected: ["rejected", "cancelled"],
+  // everything the restaurant is finished with — its order history
+  history: ["delivered", "collected", "rejected", "cancelled"],
 };
 
 /** Orders that never reached the restaurant are none of its business. */
@@ -52,7 +53,7 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
   const selectedOrder = orders.find((o) => o.id === selectedId) ?? null;
 
   const ordersByTab = useMemo(() => {
-    const result: Record<TabKey, Order[]> = { new: [], active: [], completed: [], rejected: [] };
+    const result: Record<TabKey, Order[]> = { new: [], active: [], history: [] };
     for (const order of orders) {
       if (HIDDEN.includes(order.status)) continue;
       for (const tab of Object.keys(TAB_STATUS_MAP) as TabKey[]) {
@@ -114,8 +115,10 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
           : "New orders appear here the moment a customer pays",
       },
       active: { title: "No active orders", desc: "Orders you accept show up here" },
-      completed: { title: "Nothing completed yet", desc: "Delivered orders are listed here" },
-      rejected: { title: "No rejected orders", desc: "Orders you decline are listed here" },
+      history: {
+        title: "No past orders yet",
+        desc: "Delivered, collected and declined orders are kept here",
+      },
     };
     const msg = messages[tab];
     return (
@@ -194,15 +197,22 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
             <TabsTrigger value="active">
               {renderTabLabel("Active", ordersByTab.active.length)}
             </TabsTrigger>
-            <TabsTrigger value="completed">
-              {renderTabLabel("Done", ordersByTab.completed.length)}
-            </TabsTrigger>
-            <TabsTrigger value="rejected">
-              {renderTabLabel("Rejected", ordersByTab.rejected.length)}
+            <TabsTrigger value="history">
+              {renderTabLabel("History", ordersByTab.history.length)}
             </TabsTrigger>
           </TabsList>
 
-          {(Object.keys(TAB_STATUS_MAP) as TabKey[]).map((tab) => (
+          <TabsContent value="history">
+            <OrderHistory
+              orders={ordersByTab.history}
+              onViewDetail={(o) => {
+                setSelectedId(o.id);
+                setDetailOpen(true);
+              }}
+            />
+          </TabsContent>
+
+          {(["new", "active"] as TabKey[]).map((tab) => (
             <TabsContent key={tab} value={tab}>
               {ordersByTab[tab].length === 0 ? (
                 renderEmptyState(tab)

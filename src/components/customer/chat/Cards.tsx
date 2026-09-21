@@ -352,11 +352,13 @@ export function OrderLinkCard({
   code,
   total,
   restaurantName,
+  phone,
 }: {
   orderId: string;
   code: string;
   total: number;
   restaurantName: string;
+  phone: string;
 }) {
   const [copied, setCopied] = useState(false);
   const href = `/order/${orderId}`;
@@ -396,6 +398,12 @@ export function OrderLinkCard({
             {copied ? "Copied" : "Copy"}
           </Button>
         </div>
+        <p className="text-xs text-ink-faint">
+          Also texted to {phone} ·{" "}
+          <Link href={`/sms?phone=${encodeURIComponent(phone)}`} className="font-medium text-brand">
+            open the SMS tracker
+          </Link>
+        </p>
       </div>
     </Card>
   );

@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import Link from "next/link";
 import { OrderExperience } from "@/components/customer/OrderExperience";
 import { DemoControls } from "@/components/customer/DemoControls";
@@ -18,9 +17,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   // Rendered on the server so the link opens with the order already on screen,
-  // then the client takes over polling for live updates.
+  // then the client takes over polling for live updates. A miss is not a 404:
+  // deployed serverless this instance may simply never have seen the order, so
+  // the client restores it from its own cache — see `lib/order-cache.ts`.
   const order = getOrder(id);
-  if (!order) notFound();
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pt-4 pb-6">
@@ -34,8 +34,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
         <span className="text-xs text-ink-faint">Secure order link</span>
       </header>
 
-      <OrderExperience initialOrder={order} />
-      <DemoControls orderId={order.id} />
+      <OrderExperience orderId={id} initialOrder={order} />
+      <DemoControls orderId={id} />
     </main>
   );
 }

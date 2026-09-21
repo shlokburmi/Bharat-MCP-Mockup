@@ -305,19 +305,53 @@ export function getOrder(id: string): Order | undefined {
   return order ? withExpiry(order) : undefined;
 }
 
+/** Digits only, so "+91 98867 40021" and "9886740021" are the same customer. */
+function digits(phone: string): string {
+  return phone.replace(/\D/g, "").slice(-10);
+}
+
 export function listOrders(
-  opts: { restaurantId?: string; riderId?: string; status?: OrderStatus[]; active?: boolean } = {},
+  opts: {
+    restaurantId?: string;
+    riderId?: string;
+    phone?: string;
+    status?: OrderStatus[];
+    active?: boolean;
+  } = {},
 ): Order[] {
+  const phone = opts.phone ? digits(opts.phone) : undefined;
   return [...db().orders.values()]
     .map(withExpiry)
     .filter((o) => {
       if (opts.restaurantId && o.restaurantId !== opts.restaurantId) return false;
       if (opts.riderId && o.riderId !== opts.riderId) return false;
+      if (phone && digits(o.customer.phone) !== phone) return false;
       if (opts.status && !opts.status.includes(o.status)) return false;
       if (opts.active && isTerminal(o.status)) return false;
       return true;
     })
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
+/**
+ * Re-inserts orders a browser is holding that this process has never seen.
+ *
+ * On Vercel every serverless instance boots with an empty order map, so the
+ * client's localStorage copy is the only durable one. Orders already here win
+ * when they are newer, so a hydrate can never roll an order backwards.
+ */
+export function hydrateOrders(incoming: Order[]): number {
+  const d = db();
+  let restored = 0;
+  for (const order of incoming.slice(0, 200)) {
+    if (!order?.id || !order.status || !Array.isArray(order.items)) continue;
+    const existing = d.orders.get(order.id);
+    if (existing && Date.parse(existing.updatedAt) >= Date.parse(order.updatedAt)) continue;
+    d.orders.set(order.id, order);
+    restored += 1;
+  }
+  if (restored) touch();
+  return restored;
 }
 
 function save(order: Order): Order {
@@ -342,6 +376,8 @@ export function payOrder(
   id: string,
   method: PaymentMethod,
   outcome: "success" | "failure" = "success",
+  /** what the gateway sheet says it charged, e.g. "HDFC Credit Card •••• 4242" */
+  detail?: string,
 ): Order {
   const order = getOrder(id);
   if (!order) throw new StoreError("Order not found", 404);
@@ -361,9 +397,10 @@ export function payOrder(
 
   const paid = applyTransition(order, "paid", {
     actor: "customer",
-    note: method === "cod" ? "Cash on delivery confirmed" : `Paid via ${method.toUpperCase()}`,
+    note: method === "cod" ? "Cash on delivery confirmed" : `Paid via ${detail ?? method.toUpperCase()}`,
     patch: {
       paymentMethod: method,
+      paymentDetail: detail,
       paymentId: `pay_mock_${Math.random().toString(36).slice(2, 12)}`,
     },
   });

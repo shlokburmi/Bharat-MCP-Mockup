@@ -10,7 +10,7 @@ export type RestaurantCategory = "A" | "B";
 
 export type FulfilmentMode = "delivery" | "pickup";
 
-export type PaymentMethod = "upi" | "card" | "cod";
+export type PaymentMethod = "upi" | "card" | "netbanking" | "wallet" | "cod";
 
 export type OrderStatus =
   // pre-payment
@@ -140,6 +140,8 @@ export interface Order {
   paymentMethod?: PaymentMethod;
   /** mock Razorpay payment id, set on successful payment */
   paymentId?: string;
+  /** what the customer actually paid with, e.g. "HDFC Credit Card •••• 4242" */
+  paymentDetail?: string;
   riderId?: string;
   riderName?: string;
   riderPhone?: string;

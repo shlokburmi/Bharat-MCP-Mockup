@@ -78,24 +78,24 @@ export function useNow(intervalMs = 1000): number {
  * source of truth, so whatever another tab did shows up on the next tick.
  */
 export function useLiveOrders(
-  opts: { restaurantId?: string; riderId?: string; active?: boolean } = {},
+  opts: { restaurantId?: string; riderId?: string; phone?: string; active?: boolean } = {},
   intervalMs = 2500,
 ) {
-  const { restaurantId, riderId, active } = opts;
+  const { restaurantId, riderId, phone, active } = opts;
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      setOrders(await fetchOrders({ restaurantId, riderId, active }));
+      setOrders(await fetchOrders({ restaurantId, riderId, phone, active }));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the server");
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, riderId, active]);
+  }, [restaurantId, riderId, phone, active]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;

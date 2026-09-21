@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Badge, Button, Card, Spinner, cx } from "@/components/ui/kit";
 import { BillBreakdown, DeliveryDetails, ItemsList, PoweredByStrip, RestaurantHeader } from "./OrderBits";
 import { PaymentSheet } from "./PaymentSheet";
+import { SmsTracker } from "./SmsTracker";
 import { TrackingView } from "./TrackingView";
 import { countdown, rupees, timeOfDay } from "@/lib/format";
 import { useLiveOrder, useNow } from "@/lib/use-live-order";
@@ -15,16 +16,30 @@ import type { Order } from "@/lib/types";
  * payment sheet into live tracking — it never navigates away, so the link a
  * customer keeps in their chat history always shows the current truth.
  */
-export function OrderExperience({ initialOrder }: { initialOrder: Order }) {
-  const { order, error, apply } = useLiveOrder(initialOrder.id, initialOrder);
+export function OrderExperience({
+  orderId,
+  initialOrder,
+}: {
+  orderId: string;
+  /** Absent when this server instance had never seen the order — the client
+   *  restores it from its own cache before deciding the link is dead. */
+  initialOrder?: Order;
+}) {
+  const { order, loading, error, apply } = useLiveOrder(orderId, initialOrder);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [justPaid, setJustPaid] = useState(false);
 
   if (!order) {
-    return (
+    return loading ? (
       <div className="flex justify-center py-20">
         <Spinner className="size-6 text-brand" />
       </div>
+    ) : (
+      <DeadEnd
+        emoji="🔍"
+        title="We couldn't find that order"
+        body="This link isn't in your browser's history and the server has no record of it. Ask your assistant for a fresh one."
+      />
     );
   }
 
@@ -103,6 +118,7 @@ function PrePayment({ order, onPay }: { order: Order; onPay: () => void }) {
       </Card>
 
       <DeliveryDetails order={order} />
+      <SmsTracker order={order} />
 
       <Card className="p-4">
         <p className="text-sm text-ink-soft">
@@ -138,8 +154,9 @@ function PaidToast({ order, onDone }: { order: Order; onDone: () => void }) {
         </p>
         <p className="text-sm text-ink-soft">
           {rupees(order.totals.total)}
-          {order.paymentId && ` · ${order.paymentId}`}
+          {order.paymentDetail && ` · ${order.paymentDetail}`}
         </p>
+        {order.paymentId && <p className="text-xs text-ink-faint">{order.paymentId}</p>}
       </div>
       <button
         type="button"

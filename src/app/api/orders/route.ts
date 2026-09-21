@@ -11,6 +11,7 @@ export async function GET(req: Request) {
   const orders = listOrders({
     restaurantId: searchParams.get("restaurantId") ?? undefined,
     riderId: searchParams.get("riderId") ?? undefined,
+    phone: searchParams.get("phone") ?? undefined,
     active: searchParams.get("active") === "1" ? true : undefined,
     status: status ? (status.split(",") as OrderStatus[]) : undefined,
   });

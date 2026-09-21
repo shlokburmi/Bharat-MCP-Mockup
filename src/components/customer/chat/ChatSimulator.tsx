@@ -26,7 +26,15 @@ type Msg =
   | { id: string; kind: "results"; results: SearchResult[] }
   | { id: string; kind: "cart" }
   | { id: string; kind: "checkout" }
-  | { id: string; kind: "link"; orderId: string; code: string; total: number; restaurantName: string };
+  | {
+      id: string;
+      kind: "link";
+      orderId: string;
+      code: string;
+      total: number;
+      restaurantName: string;
+      phone: string;
+    };
 
 interface Draft {
   restaurant: Restaurant;
@@ -58,10 +66,20 @@ export function ChatSimulator() {
 
   const push = useCallback((msg: Msg) => setMessages((prev) => [...prev, msg]), []);
 
-  /** Adds a message only if one of that kind isn't already on screen — the cart
-   *  and checkout cards read from live state, so a second copy would confuse. */
-  const pushOnce = useCallback((msg: Msg) => {
-    setMessages((prev) => (prev.some((m) => m.kind === msg.kind) ? prev : [...prev, msg]));
+  /** The cart and checkout cards read from live state, so there is only ever one
+   *  of each — and it belongs at the bottom of the thread, under whatever the
+   *  assistant said last. Dropping the old copy and appending moves it down. */
+  const pushLast = useCallback((msg: Msg) => {
+    setMessages((prev) => [...prev.filter((m) => m.kind !== msg.kind), msg]);
+  }, []);
+
+  /** Keeps an on-screen cart/checkout card below newly arrived messages. */
+  const bumpToEnd = useCallback((kinds: Msg["kind"][]) => {
+    setMessages((prev) => {
+      const moving = prev.filter((m) => kinds.includes(m.kind));
+      if (!moving.length) return prev;
+      return [...prev.filter((m) => !kinds.includes(m.kind)), ...moving];
+    });
   }, []);
 
   const finishTool = useCallback((id: string, summary: string) => {
@@ -107,6 +125,7 @@ export function ChatSimulator() {
         text: `Here's what's good for "${query}" around ${area}. Add a dish and I'll put an order together.`,
       });
       push({ id: uid(), kind: "results", results });
+      bumpToEnd(["cart", "checkout"]);
     } catch {
       push({
         id: uid(),
@@ -119,15 +138,10 @@ export function ChatSimulator() {
   }
 
   function addItem(restaurant: Restaurant, item: MenuItem) {
+    const switching = draft !== null && draft.restaurant.id !== restaurant.id;
+
     setDraft((prev) => {
       if (!prev || prev.restaurant.id !== restaurant.id) {
-        if (prev) {
-          push({
-            id: uid(),
-            kind: "assistant",
-            text: `Switched your order to ${restaurant.name} — one restaurant per order keeps delivery honest.`,
-          });
-        }
         return { restaurant, lines: [{ item, qty: 1 }] };
       }
       const existing = prev.lines.find((l) => l.item.id === item.id);
@@ -138,7 +152,16 @@ export function ChatSimulator() {
           : [...prev.lines, { item, qty: 1 }],
       };
     });
-    pushOnce({ id: uid(), kind: "cart" });
+
+    if (switching) {
+      push({
+        id: uid(),
+        kind: "assistant",
+        text: `Switched your order to ${restaurant.name} — one restaurant per order keeps delivery honest.`,
+      });
+    }
+    pushLast({ id: uid(), kind: "cart" });
+    bumpToEnd(["checkout"]);
   }
 
   function setQty(menuItemId: string, qty: number) {
@@ -152,12 +175,12 @@ export function ChatSimulator() {
   }
 
   function onContinue() {
-    pushOnce({ id: uid(), kind: "checkout" });
     push({
       id: uid(),
       kind: "assistant",
       text: "Confirm where this is going and I'll generate a payment link.",
     });
+    pushLast({ id: uid(), kind: "checkout" });
   }
 
   async function submitCheckout(details: CustomerDetails, mode: FulfilmentMode) {
@@ -196,6 +219,7 @@ export function ChatSimulator() {
         code: order.code,
         total: order.totals.total,
         restaurantName: order.restaurantName,
+        phone: order.customer.phone,
       });
       setMessages((prev) => prev.filter((m) => m.kind !== "cart" && m.kind !== "checkout"));
       setDraft(null);
@@ -311,6 +335,7 @@ export function ChatSimulator() {
                     code={msg.code}
                     total={msg.total}
                     restaurantName={msg.restaurantName}
+                    phone={msg.phone}
                   />
                 </div>
               )}
