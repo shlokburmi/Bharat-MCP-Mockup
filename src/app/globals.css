@@ -72,7 +72,9 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /* Bumped from 0.625rem — the revamp leans into soft, confidently rounded
+     surfaces (cards, sheets, buttons) rather than the tighter shadcn default. */
+  --radius: 1rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #12100e;
   --sidebar-primary: #d64510;
@@ -205,4 +207,67 @@
 .scroll-slim::-webkit-scrollbar-thumb {
   background: var(--color-line-strong);
   border-radius: 999px;
+}
+
+/* ---------------------------------------------------------------------------
+   Revamp: a soft, "floating card" visual language shared by every surface —
+   layered ambient shadows instead of hard borders, a faint dotted canvas for
+   hero/marketing sections, and a couple of hover/entrance utilities used to
+   give the new hero compositions some life.
+   --------------------------------------------------------------------------- */
+
+@theme {
+  --shadow-color: 20 14% 15%;
+}
+
+@utility shadow-soft {
+  /* Resting state for ordinary cards — barely-there lift off the canvas. */
+  box-shadow:
+    0 1px 2px hsl(var(--shadow-color) / 0.04),
+    0 8px 20px -12px hsl(var(--shadow-color) / 0.1);
+}
+
+@utility shadow-float {
+  /* Bento tiles, product-preview cards — visibly separated from the page. */
+  box-shadow:
+    0 2px 4px hsl(var(--shadow-color) / 0.04),
+    0 16px 36px -12px hsl(var(--shadow-color) / 0.16);
+}
+
+@utility shadow-lift {
+  /* Hero elements, open sheets/dialogs — the most pronounced level. */
+  box-shadow:
+    0 4px 10px hsl(var(--shadow-color) / 0.06),
+    0 30px 60px -20px hsl(var(--shadow-color) / 0.28);
+}
+
+@utility hover-float {
+  transition:
+    transform 0.25s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.25s ease;
+  &:hover {
+    transform: translateY(-3px);
+  }
+}
+
+/* Faint dot grid for hero/marketing canvases — brand-tinted, very low
+   opacity so it reads as texture rather than pattern. */
+.bg-dots {
+  background-image: radial-gradient(circle, var(--color-line-strong) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -11px -11px;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--tilt, 0deg));
+  }
+  50% {
+    transform: translateY(-8px) rotate(var(--tilt, 0deg));
+  }
+}
+
+@utility animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
 }

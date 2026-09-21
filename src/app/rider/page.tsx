@@ -97,7 +97,7 @@ export default function RiderPage() {
 
   return (
     <div className="max-w-sm mx-auto pb-8">
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3">
+      <header className="shadow-soft sticky top-0 z-20 bg-background/95 px-4 py-3 backdrop-blur-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-bold">

@@ -154,7 +154,7 @@ export function OrderInbox({ restaurant, onLogout }: OrderInboxProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
-      <header className="sticky top-0 z-40 border-b bg-white px-4 py-3">
+      <header className="shadow-soft sticky top-0 z-40 bg-surface px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h1 className="text-base font-semibold">{restaurant.name}</h1>

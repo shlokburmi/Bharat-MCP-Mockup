@@ -216,9 +216,9 @@ export function ChatSimulator() {
 
   return (
     <div className="flex h-dvh flex-col bg-canvas">
-      <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3">
+      <header className="shadow-soft relative z-10 flex items-center justify-between bg-surface px-4 py-3">
         <div className="flex items-center gap-2">
-          <span aria-hidden className="grid size-7 place-items-center rounded-lg bg-ink text-sm text-white">
+          <span aria-hidden className="grid size-7 place-items-center rounded-xl bg-ink text-sm text-white">
             ✦
           </span>
           <div>
@@ -226,12 +226,12 @@ export function ChatSimulator() {
             <p className="text-xs text-ink-faint">Bharat MCP connected</p>
           </div>
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-ink-faint">
+        <label className="flex items-center gap-1.5 rounded-full bg-canvas py-1 pr-2 pl-2.5 text-xs text-ink-faint">
           <span aria-hidden>📍</span>
           <select
             value={area}
             onChange={(e) => setArea(e.target.value)}
-            className="rounded-lg border border-line bg-surface px-2 py-1 text-xs text-ink"
+            className="rounded-lg bg-canvas py-0.5 text-xs text-ink outline-none"
           >
             {["Koramangala", "Indiranagar", "HSR Layout", "Jayanagar", "JP Nagar", "Whitefield", "Malleshwaram", "Bellandur"].map(
               (a) => (
@@ -339,7 +339,7 @@ export function ChatSimulator() {
         </div>
       </div>
 
-      <div className="border-t border-line bg-surface px-4 py-3">
+      <div className="shadow-lift relative z-10 bg-surface px-4 py-3">
         <form
           className="mx-auto flex w-full max-w-lg items-center gap-2"
           onSubmit={(e) => {
@@ -356,7 +356,7 @@ export function ChatSimulator() {
           <button
             type="submit"
             disabled={!input.trim() || busy}
-            className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-40"
+            className="hover-float grid size-11 shrink-0 place-items-center rounded-xl bg-brand text-white transition-colors hover:bg-brand-dark disabled:opacity-40"
             aria-label="Send"
           >
             ↑
@@ -370,10 +370,13 @@ export function ChatSimulator() {
 function Welcome({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="pt-6">
-      <span aria-hidden className="text-3xl">
+      <span
+        aria-hidden
+        className="shadow-soft grid size-11 place-items-center rounded-2xl bg-surface text-xl"
+      >
         ✦
       </span>
-      <h1 className="mt-3 text-xl font-semibold text-ink">What are you hungry for?</h1>
+      <h1 className="mt-4 text-xl font-semibold text-ink">What are you hungry for?</h1>
       <p className="mt-1 text-[15px] text-ink-soft">
         I can search restaurants near you, put an order together and hand you a payment link — all
         without leaving this chat.
@@ -384,7 +387,7 @@ function Welcome({ onPick }: { onPick: (text: string) => void }) {
             key={s}
             type="button"
             onClick={() => onPick(s)}
-            className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-ink-soft hover:border-brand/40 hover:text-brand"
+            className="hover-float shadow-soft rounded-full bg-surface px-3 py-1.5 text-sm text-ink-soft hover:text-brand"
           >
             {s}
           </button>

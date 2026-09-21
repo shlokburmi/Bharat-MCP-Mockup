@@ -26,7 +26,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pt-4 pb-6">
       <header className="mb-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <span aria-hidden className="grid size-7 place-items-center rounded-lg bg-brand text-sm text-white">
+          <span aria-hidden className="shadow-soft grid size-7 place-items-center rounded-xl bg-brand text-sm text-white">
             ॐ
           </span>
           <span className="text-sm font-semibold text-ink">Bharat MCP</span>

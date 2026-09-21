@@ -8,10 +8,16 @@ export const metadata: Metadata = {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="shadow-soft sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-14 max-w-6xl items-center px-6">
           <div className="flex items-center gap-3">
-            <span className="text-lg font-bold tracking-tight">Bharat MCP</span>
+            <span
+              aria-hidden
+              className="shadow-soft grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-foreground"
+            >
+              ॐ
+            </span>
+            <span className="text-[15px] font-semibold tracking-tight">Bharat MCP</span>
             <span className="text-sm text-muted-foreground">—</span>
             <span className="text-sm font-medium text-muted-foreground">Ops Console</span>
           </div>

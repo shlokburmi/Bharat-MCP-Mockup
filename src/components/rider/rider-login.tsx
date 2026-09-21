@@ -12,7 +12,7 @@ interface RiderLoginProps {
 
 export function RiderLogin({ riders, busyRiderIds, onSelect }: RiderLoginProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+    <div className="bg-dots flex min-h-[80vh] flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
           <div className="text-4xl">&#x1F6F5;</div>

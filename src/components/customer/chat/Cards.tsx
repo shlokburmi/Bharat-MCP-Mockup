@@ -21,7 +21,7 @@ export function ToolCall({
   summary?: string;
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs text-ink-soft">
+    <div className="shadow-soft flex items-start gap-2 rounded-xl bg-surface px-3 py-2 font-mono text-xs text-ink-soft">
       {status === "running" ? (
         <Spinner className="mt-0.5 size-3 text-brand" />
       ) : (
