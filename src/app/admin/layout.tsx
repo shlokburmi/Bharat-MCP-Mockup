@@ -15,7 +15,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               aria-hidden
               className="shadow-soft grid size-7 place-items-center rounded-lg bg-primary text-sm text-primary-foreground"
             >
-              ॐ
+              B
             </span>
             <span className="text-[15px] font-semibold tracking-tight">Bharat MCP</span>
             <span className="text-sm text-muted-foreground">—</span>

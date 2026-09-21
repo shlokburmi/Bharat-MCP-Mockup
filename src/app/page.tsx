@@ -61,7 +61,7 @@ export default function Home() {
             aria-hidden
             className="shadow-soft grid size-8 place-items-center rounded-xl bg-brand text-sm font-semibold text-white"
           >
-            ॐ
+            B
           </span>
           <span className="text-[15px] font-semibold text-ink">Bharat MCP</span>
         </div>
